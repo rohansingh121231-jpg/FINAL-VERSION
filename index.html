@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>QR Send - E2E Encrypted</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #ffffff; --bg-secondary: #f8f9fa; --bg-card: #ffffff;
+            --text-primary: #1a1a1a; --text-secondary: #666666;
+            --accent: #4285f4; --accent-hover: #3367d6; --border: #e0e0e0;
+            --shadow: rgba(0, 0, 0, 0.1); --success: #34a853; --error: #ea4335;
+            --bg-sender: #dcf8c6; --text-sender: #1a1a1a;
+        }
+        body.dark-mode {
+            --bg-primary: #0f0f0f; --bg-secondary: #1a1a1a; --bg-card: #1e1e1e;
+            --text-primary: #e8e8e8; --text-secondary: #b0b0b0; --border: #333333;
+            --shadow: rgba(255, 255, 255, 0.05); --bg-sender: #224838; --text-sender: #e8e8e8;
+        }
+        body {
+            font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary); min-height: 100vh; display: flex;
+            align-items: center; justify-content: center; padding: 0;
+            overflow-x: hidden; position: relative;
+        }
+        body::before {
+            content: ''; position: fixed; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle, var(--accent) 1px, transparent 1px);
+            background-size: 50px 50px; opacity: 0.03; z-index: 0;
+            animation: bgMove 20s linear infinite;
+        }
+        @keyframes bgMove { 0% { transform: translate(0, 0); } 100% { transform: translate(50px, 50px); } }
+
+        .theme-toggle {
+            position: fixed; top: 15px; right: 15px; width: 45px; height: 45px;
+            background: var(--bg-card); border: 2px solid var(--border); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+            z-index: 1000; box-shadow: 0 4px 12px var(--shadow);
+        }
+        .theme-toggle svg { width: 22px; height: 22px; fill: var(--text-primary); }
+
+        .container {
+            position: relative; width: 100%; background: var(--bg-card); overflow: hidden; z-index: 1;
+            height: 100vh; display: flex; flex-direction: column;
+        }
+        .sidebar { flex-shrink: 0; }
+        .chat-main { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-secondary); }
+        
+        /* Scrollbar */
+        .container::-webkit-scrollbar { width: 6px; }
+        .container::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
+
+        header {
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
+            padding: 20px; text-align: center; color: white;
+        }
+        header h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+        #status { font-size: 13px; opacity: 0.9; font-weight: 500; }
+
+        /* Main Areas */
+        main { padding: 20px; text-align: center; }
+        #qrcode { padding: 15px; background: white; border-radius: 12px; margin: 0 auto 15px; display: inline-block; }
+        #qrcode img { max-width: 100%; height: auto; }
+        
+        .share-button {
+            padding: 10px 18px; border: 2px solid var(--border); background: var(--bg-card);
+            color: var(--text-primary); border-radius: 10px; font-weight: 600; font-size: 13px;
+            cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin: 5px;
+        }
+        .primary-share { background: var(--accent); color: white; border-color: var(--accent); }
+        .scanner-button { background: var(--success); color: white; border-color: var(--success); }
+
+        /* Connection Overlay */
+        .connection-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center;
+            z-index: 9999; backdrop-filter: blur(10px);
+        }
+        .connection-overlay.active { display: flex; }
+        .lock-svg { width: 100px; height: 100px; }
+        .lock-body { animation: lockClose 0.8s ease forwards; }
+        .lock-shackle { animation: shackleClose 0.8s ease forwards 0.3s; }
+        .checkmark { animation: checkmarkDraw 0.5s ease forwards 1s; }
+        @keyframes lockClose { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+        @keyframes shackleClose { 0% { transform: translateY(-10px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+        @keyframes checkmarkDraw { 0% { stroke-dashoffset: 100; opacity: 0; } 100% { stroke-dashoffset: 0; opacity: 1; } }
+
+        /* Scanner */
+        .scanner-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000;
+            display: none; flex-direction: column; z-index: 10000;
+        }
+        .scanner-modal.active { display: flex; }
+        .scanner-header { padding: 15px; background: rgba(0,0,0,0.8); display: flex; justify-content: space-between; color: white; z-index: 10001;}
+        .close-scanner { background: var(--error); color: white; border: none; width: 35px; height: 35px; border-radius: 50%; font-size: 20px; cursor: pointer; }
+        #qr-reader { width: 100%; height: 100%; position: relative; }
+        #qr-reader video { object-fit: cover; width: 100%; height: 100%; }
+
+        /* Transfer UI */
+        .transfer-area { padding: 20px; background: var(--bg-secondary); border-top: 1px solid var(--border); }
+        .transfer-area h3 { margin-bottom: 10px; font-size: 16px; font-weight: 600; }
+        #file-input { width: 100%; padding: 12px; border: 2px dashed var(--border); border-radius: 10px; background: var(--bg-card); margin-bottom: 10px; }
+        
+        .progress-container { padding: 10px; background: var(--bg-card); border-radius: 10px; margin-top: 10px; box-shadow: 0 2px 5px var(--shadow); }
+        .progress-top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .progress-label { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%; }
+        .cancel-button { background: var(--error); color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+        .progress-bar-bg { height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden; }
+        .progress-bar { 
+            height: 100%; background: var(--accent); width: 0%; transition: width 0.2s; 
+            background-image: linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%);
+            background-size: 20px 20px; animation: progress-stripes 1s linear infinite;
+        }
+        @keyframes progress-stripes { from { background-position: 20px 0; } to { background-position: 0 0; } }
+        .progress-stats { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-secondary); margin-top: 4px; }
+
+        /* Chat */
+        .chat-container { display: none; flex-direction: column; height: 100%; }
+        .chat-header { padding: 10px 15px; background: var(--bg-card); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .chat-header h3 { font-size: 16px; font-weight: 600; }
+        .chat-call-buttons { display: flex; gap: 15px; }
+        .call-button { background: none; border: none; cursor: pointer; color: var(--text-primary); }
+        .call-button svg { width: 22px; height: 22px; fill: currentColor; }
+        .call-button#end-call-button { color: var(--error); display: none; }
+
+        .chat-messages { flex-grow: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .chat-message { max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 14px; position: relative; word-wrap: break-word; }
+        .chat-message.sender { align-self: flex-end; background: var(--bg-sender); color: var(--text-sender); border-bottom-right-radius: 2px; }
+        .chat-message.receiver { align-self: flex-start; background: var(--bg-card); border: 1px solid var(--border); border-bottom-left-radius: 2px; }
+        
+        .chat-message img { max-width: 200px; border-radius: 8px; cursor: pointer; display: block; margin-bottom: 4px; }
+        .msg-status { font-size: 10px; text-align: right; display: block; opacity: 0.7; }
+        .msg-status.seen { color: var(--accent); }
+        .download-status { font-size: 9px; font-style: italic; display: none; opacity: 0.7; text-align: right; }
+        
+        .chat-input-area { padding: 10px; background: var(--bg-card); display: flex; gap: 8px; border-top: 1px solid var(--border); }
+        #chat-input { flex-grow: 1; padding: 10px; border-radius: 20px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); }
+        #chat-send-button, #chat-attach-button { background: var(--accent); color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        #chat-attach-button { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); }
+        
+        /* Reply UI */
+        .chat-message-reply-btn { position: absolute; top: -10px; right: -10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 50%; width: 24px; height: 24px; display: none; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .chat-message:hover .chat-message-reply-btn { display: flex; }
+        .message-reply-context { font-size: 11px; padding: 4px; border-left: 3px solid var(--accent); background: rgba(0,0,0,0.05); margin-bottom: 4px; border-radius: 4px; }
+        .reply-context-bar { display: none; padding: 8px 12px; background: var(--bg-secondary); border-top: 1px solid var(--border); font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
+        
+        .chat-placeholder { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-secondary); }
+        .chat-placeholder svg { width: 60px; height: 60px; opacity: 0.3; margin-bottom: 10px; fill: currentColor; }
+
+        /* Modals & Overlays */
+        .image-modal-overlay, .call-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 11000; display: none; align-items: center; justify-content: center; flex-direction: column; }
+        .image-modal-overlay.active, .call-overlay.active { display: flex; }
+        .image-modal-content { max-width: 90%; max-height: 80%; object-fit: contain; }
+        .image-modal-toolbar { position: absolute; top: 20px; right: 20px; display: flex; gap: 15px; }
+        .modal-btn { background: rgba(255,255,255,0.2); border: none; width: 40px; height: 40px; border-radius: 50%; color: white; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .modal-btn:hover { background: rgba(255,255,255,0.4); }
+
+        /* Video Call UI */
+        .video-grid { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
+        #remote-video { width: 100%; height: 100%; object-fit: cover; }
+        #local-video { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; background: #222; border: 2px solid white; border-radius: 8px; object-fit: cover; }
+        video { transform: scaleX(-1); } /* Mirror */
+
+        @media (min-width: 768px) {
+            body { padding: 20px; }
+            .container { flex-direction: row; max-width: 1000px; max-height: 90vh; border-radius: 20px; box-shadow: 0 10px 30px var(--shadow); }
+            .sidebar { width: 320px; border-right: 1px solid var(--border); overflow-y: auto; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="theme-toggle" onclick="toggleTheme()">
+        <svg viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+    </div>
+
+    <!-- Image Modal -->
+    <div class="image-modal-overlay" id="image-modal-overlay">
+        <div class="image-modal-toolbar">
+            <button class="modal-btn" id="image-modal-download" title="Download">⬇</button>
+            <button class="modal-btn" id="image-modal-close" title="Close">✕</button>
+        </div>
+        <img class="image-modal-content" id="image-modal-content">
+    </div>
+
+    <!-- Call Overlay -->
+    <div class="call-overlay" id="call-overlay">
+        <div class="video-grid">
+            <video id="remote-video" autoplay playsinline></video>
+            <video id="local-video" autoplay playsinline muted></video>
+        </div>
+        <div style="position:absolute; bottom: 30px; display:flex; gap:20px;">
+             <button class="modal-btn" style="background: red; width: 60px; height: 60px;" onclick="endCall()">📞</button>
+        </div>
+    </div>
+
+    <div class="connection-overlay" id="connection-overlay">
+        <div class="lock-animation">
+            <svg class="lock-svg" viewBox="0 0 100 100"><rect class="lock-body" x="30" y="45" width="40" height="35" rx="5" fill="#4285f4"/><path class="lock-shackle" d="M35 45 V35 C35 25 40 20 50 20 C60 20 65 25 65 35 V45" stroke="#4285f4" stroke-width="5" fill="none"/><polyline class="checkmark" points="40,62 47,69 62,54" stroke="#34a853" stroke-width="4" fill="none"/></svg>
+            <p style="color: white; font-weight:600; margin-top:10px;">E2E Encrypted</p>
+        </div>
+    </div>
+
+    <div class="scanner-modal" id="scanner-modal">
+        <div class="scanner-header"><h2>Scan QR</h2><button class="close-scanner" onclick="closeScanner()">✕</button></div>
+        <div id="qr-reader"></div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <header><h1>QR Send</h1><div id="status">Disconnected</div></header>
+            <main>
+                <div id="qr-code-container">
+                    <div id="qrcode"></div>
+                    <p>Scan to connect</p>
+                    <button class="scanner-button share-button" onclick="openScanner()">📷 Scan QR</button>
+                </div>
+                <div id="connected-view" style="display:none;">
+                    <p style="color:var(--success); font-weight:bold; margin-bottom:15px;">✅ Connected</p>
+                </div>
+            </main>
+            <div class="transfer-area">
+                <h3>Send Files</h3>
+                <input type="file" id="file-input" disabled multiple>
+                <div id="transfer-status">Idle</div>
+                <div id="transfer-list-container"></div>
+            </div>
+        </div>
+
+        <div class="chat-main">
+            <div class="chat-placeholder" id="chat-placeholder">
+                <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+                <p>Scan QR to start chatting</p>
+            </div>
+            <div class="chat-container" id="chat-container">
+                <div class="chat-header">
+                    <h3>Chat</h3>
+                    <div class="chat-call-buttons">
+                        <button class="call-button" onclick="startCall(false)">📞</button>
+                        <button class="call-button" onclick="startCall(true)">📹</button>
+                    </div>
+                </div>
+                <div class="chat-messages" id="chat-messages"></div>
+                
+                <!-- Reply Context -->
+                <div class="reply-context-bar" id="reply-context-bar" style="display:none;">
+                    <span id="reply-text">Replying...</span>
+                    <button onclick="cancelReply()" style="background:none;border:none;cursor:pointer;">✕</button>
+                </div>
+
+                <div class="chat-input-area">
+                    <button id="chat-attach-button" onclick="document.getElementById('chat-image-input').click()">📎</button>
+                    <input type="file" id="chat-image-input" accept="image/*" style="display:none">
+                    <input type="text" id="chat-input" placeholder="Type...">
+                    <button id="chat-send-button">➤</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- STATE VARIABLES (Defined at top scope to prevent ReferenceErrors) ---
+        let peer = null;
+        let currentConnection = null;
+        let isHost = false;
+        let fileQueue = [];
+        let receivingFiles = new Map();
+        let activeSend = null;
+        let isSending = false;
+        let localStream = null;
+        let remoteStream = null;
+        let currentCall = null;
+        let isCallActive = false;
+        let replyingTo = null;
+        
+        // --- HELPER FUNCTIONS (Defined before usage) ---
+        
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+        }
+        if(localStorage.getItem('theme') === 'dark') toggleTheme();
+
+        // --- TRANSFER LOGIC FUNCTIONS ---
+
+        function cancelReceive(fileId) {
+            console.log(`Cancelling receive for ${fileId}`);
+            receivingFiles.delete(fileId);
+            const ui = document.getElementById(`transfer-${fileId}`);
+            if(ui) ui.remove();
+            
+            if (currentConnection && currentConnection.open) {
+                try { currentConnection.send({ type: 'cancel', fileId: fileId }); } catch(e){}
+            }
+        }
+
+        function cancelTransfer(fileId) {
+            console.log(`Cancelling transfer for ${fileId}`);
+            if (activeSend && activeSend.id === fileId) {
+                activeSend.status = 'cancelled';
+                const ui = document.getElementById(`transfer-${fileId}`);
+                if(ui) ui.remove();
+                
+                if (currentConnection && currentConnection.open) {
+                    try { currentConnection.send({ type: 'cancel', fileId: fileId }); } catch(e){}
+                }
+                
+                isSending = false; 
+                activeSend = null;
+                sendNextFile();
+            } else {
+                // Pending
+                fileQueue = fileQueue.filter(j => j.id !== fileId);
+                const ui = document.getElementById(`transfer-${fileId}`);
+                if(ui) ui.remove();
+            }
+        }
+
+        function createTransferUI(fileId, fileName, isSender) {
+            const container = document.getElementById('transfer-list-container');
+            const div = document.createElement('div');
+            div.className = 'progress-container';
+            div.id = `transfer-${fileId}`;
+            div.innerHTML = `
+                <div class="progress-top-row">
+                    <span class="progress-label">${isSender ? 'Sending' : 'Receiving'}: ${fileName}</span>
+                    <button class="cancel-button">Cancel</button>
+                </div>
+                <div class="progress-bar-bg"><div class="progress-bar"></div></div>
+                <div class="progress-stats"><span>0%</span><span>Wait...</span></div>
+            `;
+            
+            // Add listener immediately
+            div.querySelector('.cancel-button').addEventListener('click', () => {
+                if(isSender) cancelTransfer(fileId);
+                else cancelReceive(fileId);
+            });
+            
+            container.appendChild(div);
+        }
+
+        function updateTransferUI(fileId, percent, text) {
+            const div = document.getElementById(`transfer-${fileId}`);
+            if(!div) return;
+            div.querySelector('.progress-bar').style.width = percent + '%';
+            const stats = div.querySelectorAll('.progress-stats span');
+            stats[0].textContent = percent + '%';
+            if(text) stats[1].textContent = text;
+        }
+
+        // --- IMAGE MODAL FUNCTIONS ---
+
+        function sendImageDownloadNotification(msgId) {
+            if(currentConnection && currentConnection.open) {
+                currentConnection.send({ type: 'chat-img-download', msgId: msgId });
+            }
+        }
+
+        function openImageModal(src, filename, sender, msgId) {
+            const modal = document.getElementById('image-modal-overlay');
+            const img = document.getElementById('image-modal-content');
+            const dlBtn = document.getElementById('image-modal-download');
+            
+            img.src = src;
+            modal.classList.add('active');
+            
+            if(sender === 'receiver') {
+                dlBtn.style.display = 'flex';
+                dlBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const a = document.createElement('a');
+                    a.href = src;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    sendImageDownloadNotification(msgId);
+                };
+            } else {
+                dlBtn.style.display = 'none';
+            }
+        }
+
+        function closeImageModal() {
+            document.getElementById('image-modal-overlay').classList.remove('active');
+            document.getElementById('image-modal-content').src = '';
+        }
+
+        // --- REPLY LOGIC ---
+        function setReplyContext(msgId, text) {
+            replyingTo = { msgId, text };
+            document.getElementById('reply-context-bar').style.display = 'flex';
+            document.getElementById('reply-text').textContent = 'Replying to: ' + text.substring(0, 30) + '...';
+        }
+        
+        function cancelReply() {
+            replyingTo = null;
+            document.getElementById('reply-context-bar').style.display = 'none';
+        }
+
+        // --- APP INITIALIZATION ---
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const qrReaderEl = document.getElementById('qr-reader');
+            const chatMessages = document.getElementById('chat-messages');
+            
+            // Close Modal Listeners
+            document.getElementById('image-modal-close').onclick = closeImageModal;
+            document.getElementById('image-modal-overlay').onclick = (e) => {
+                if(e.target.id === 'image-modal-overlay') closeImageModal();
+            }
+
+            // --- PEERJS INIT ---
+            function initPeer() {
+                const hashId = window.location.hash.substring(1);
+                isHost = !hashId;
+
+                peer = new Peer({
+                    config: { iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ] }
+                });
+
+                peer.on('open', (id) => {
+                    console.log('My ID:', id);
+                    if(isHost) {
+                        // Host Mode
+                        document.getElementById('status').textContent = 'Waiting for peer...';
+                        new QRCode(document.getElementById('qrcode'), {
+                            text: window.location.href + '#' + id,
+                            width: 180, height: 180
+                        });
+                    } else {
+                        // Client Mode
+                        document.getElementById('qr-code-container').style.display = 'none';
+                        document.getElementById('status').textContent = 'Connecting...';
+                        connectToPeer(hashId);
+                    }
+                });
+
+                peer.on('connection', handleConnection);
+                peer.on('call', handleIncomingCall);
+                
+                peer.on('error', (err) => {
+                    console.error('Peer error:', err);
+                    if(!isHost && (err.type === 'peer-unavailable' || err.type === 'network')) {
+                        // Client retry failed - Reload as Host
+                        alert("Connection failed. Resetting.");
+                        window.location.hash = '';
+                        window.location.reload();
+                    }
+                });
+            }
+
+            function connectToPeer(id) {
+                const conn = peer.connect(id, { reliable: true });
+                conn.on('open', () => handleConnection(conn));
+                conn.on('error', () => {
+                    alert("Connection failed. Resetting.");
+                    window.location.hash = '';
+                    window.location.reload();
+                });
+            }
+
+            function handleConnection(conn) {
+                if(currentConnection) { conn.close(); return; } // Only 1 connection
+                currentConnection = conn;
+                
+                // UI Update
+                document.getElementById('connection-overlay').classList.add('active');
+                setTimeout(() => document.getElementById('connection-overlay').classList.remove('active'), 1500);
+                
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('qr-code-container').style.display = 'none';
+                document.getElementById('connected-view').style.display = 'block';
+                document.getElementById('chat-placeholder').style.display = 'none';
+                document.getElementById('chat-container').style.display = 'flex';
+                document.getElementById('file-input').disabled = false;
+
+                conn.on('data', handleData);
+                conn.on('close', () => {
+                    // STRICT RESET LOGIC
+                    alert("Connection Lost. Resetting application.");
+                    window.location.hash = '';
+                    window.location.reload();
+                });
+            }
+
+            // --- DATA HANDLING ---
+            function handleData(data) {
+                if(data.type === 'chat-text') {
+                    appendMessage(data.text, 'receiver', data.msgId, data.replyContext);
+                    currentConnection.send({type: 'chat-read', msgId: data.msgId});
+                }
+                else if(data.type === 'chat-image') {
+                    appendImage(data.data, 'receiver', data.name, data.msgId);
+                    currentConnection.send({type: 'chat-read', msgId: data.msgId});
+                }
+                else if(data.type === 'chat-read') {
+                    const el = document.getElementById(`status-${data.msgId}`);
+                    if(el) { el.textContent = '✓✓'; el.classList.add('seen'); }
+                }
+                else if(data.type === 'chat-img-download') {
+                    const el = document.getElementById(`dl-${data.msgId}`);
+                    if(el) el.style.display = 'block';
+                }
+                // File Transfer
+                else if(data.type === 'file-meta') {
+                    receivingFiles.set(data.id, { 
+                        name: data.name, size: data.size, type: data.fileType, 
+                        received: 0, chunks: [] 
+                    });
+                    createTransferUI(data.id, data.name, false);
+                }
+                else if(data.type === 'file-chunk') {
+                    const f = receivingFiles.get(data.id);
+                    if(f) {
+                        f.chunks.push(data.chunk);
+                        f.received += data.chunk.byteLength;
+                        updateTransferUI(data.id, Math.round((f.received/f.size)*100));
+                        
+                        if(f.received >= f.size) {
+                            const blob = new Blob(f.chunks, {type: f.type});
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url; a.download = f.name; a.click();
+                            receivingFiles.delete(data.id);
+                            setTimeout(() => document.getElementById(`transfer-${data.id}`).remove(), 2000);
+                        }
+                    }
+                }
+                else if(data.type === 'cancel') {
+                    // Peer cancelled transfer
+                    if(activeSend && activeSend.id === data.fileId) {
+                         activeSend.status = 'cancelled'; // Stop sending
+                    }
+                    receivingFiles.delete(data.fileId); // Stop receiving
+                    const ui = document.getElementById(`transfer-${data.fileId}`);
+                    if(ui) ui.innerHTML = '<span style="color:red">Cancelled by peer</span>';
+                    setTimeout(() => ui?.remove(), 2000);
+                }
+                // Call Signals
+                else if(data.type === 'call-end') {
+                    endCallUI();
+                }
+            }
+
+            // --- CHAT UI ---
+            function appendMessage(text, role, msgId, replyCtx) {
+                const div = document.createElement('div');
+                div.className = `chat-message ${role}`;
+                
+                // Reply Context
+                if(replyCtx) {
+                    div.innerHTML += `<div class="message-reply-context">${replyCtx.text}</div>`;
+                }
+                
+                div.innerHTML += `<div>${text}</div>`;
+                
+                if(role === 'sender') {
+                    div.innerHTML += `<span class="msg-status" id="status-${msgId}">✓</span>`;
+                    // Reply Button for Sender
+                    const repBtn = document.createElement('div');
+                    repBtn.className = 'chat-message-reply-btn';
+                    repBtn.innerHTML = '↩';
+                    repBtn.onclick = () => setReplyContext(msgId, text);
+                    div.appendChild(repBtn);
+                } else {
+                    // Reply Button for Receiver
+                     const repBtn = document.createElement('div');
+                    repBtn.className = 'chat-message-reply-btn';
+                    repBtn.innerHTML = '↩';
+                    repBtn.onclick = () => setReplyContext(msgId, text);
+                    div.appendChild(repBtn);
+                }
+                
+                chatMessages.appendChild(div);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            function appendImage(base64, role, name, msgId) {
+                const div = document.createElement('div');
+                div.className = `chat-message ${role}`;
+                const img = document.createElement('img');
+                img.src = base64;
+                img.onclick = () => openImageModal(base64, name, role, msgId);
+                
+                div.appendChild(img);
+                
+                if(role === 'sender') {
+                    div.innerHTML += `<span class="download-status" id="dl-${msgId}">Downloaded by peer</span>`;
+                    div.innerHTML += `<span class="msg-status" id="status-${msgId}">✓</span>`;
+                }
+                
+                chatMessages.appendChild(div);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            document.getElementById('chat-send-button').onclick = () => {
+                const input = document.getElementById('chat-input');
+                const text = input.value.trim();
+                if(!text || !currentConnection) return;
+                
+                const msgId = crypto.randomUUID();
+                currentConnection.send({ 
+                    type: 'chat-text', text, msgId, 
+                    replyContext: replyingTo 
+                });
+                appendMessage(text, 'sender', msgId, replyingTo);
+                input.value = '';
+                cancelReply();
+            };
+
+            document.getElementById('chat-image-input').onchange = (e) => {
+                const file = e.target.files[0];
+                if(!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const msgId = crypto.randomUUID();
+                    currentConnection.send({
+                        type: 'chat-image', data: reader.result, name: file.name, msgId
+                    });
+                    appendImage(reader.result, 'sender', file.name, msgId);
+                };
+                reader.readAsDataURL(file);
+                e.target.value = '';
+            };
+
+            // --- FILE SENDING ---
+            document.getElementById('file-input').onchange = (e) => {
+                for(const file of e.target.files) {
+                    const id = crypto.randomUUID();
+                    fileQueue.push({ file, id });
+                    createTransferUI(id, file.name, true);
+                }
+                e.target.value = '';
+                processQueue();
+            };
+
+            function processQueue() {
+                if(isSending || fileQueue.length === 0) return;
+                const job = fileQueue.shift();
+                activeSend = job;
+                isSending = true;
+                sendFile(job);
+            }
+
+            function sendFile(job) {
+                currentConnection.send({ 
+                    type: 'file-meta', id: job.id, name: job.file.name, 
+                    size: job.file.size, fileType: job.file.type 
+                });
+                
+                const reader = new FileReader();
+                let offset = 0;
+                const chunk = 16384; // 16KB
+                
+                reader.onload = (e) => {
+                    if(job.status === 'cancelled') {
+                        isSending = false; processQueue(); return;
+                    }
+                    
+                    currentConnection.send({
+                        type: 'file-chunk', id: job.id, chunk: e.target.result
+                    });
+                    offset += e.target.result.byteLength;
+                    updateTransferUI(job.id, Math.round((offset/job.file.size)*100));
+                    
+                    if(offset < job.file.size) {
+                        readNext();
+                    } else {
+                        // Done
+                        setTimeout(() => document.getElementById(`transfer-${job.id}`).remove(), 1000);
+                        isSending = false;
+                        processQueue();
+                    }
+                };
+                
+                const readNext = () => {
+                    const slice = job.file.slice(offset, offset + chunk);
+                    reader.readAsArrayBuffer(slice);
+                };
+                readNext();
+            }
+            
+            // Make sendNextFile alias for processQueue for consistency with previous logic
+            const sendNextFile = processQueue;
+
+            // --- CALL LOGIC ---
+            window.startCall = (isVideo) => {
+                if(!currentConnection) return;
+                navigator.mediaDevices.getUserMedia({video: isVideo, audio: true})
+                .then(stream => {
+                    localStream = stream;
+                    document.getElementById('local-video').srcObject = stream;
+                    document.getElementById('call-overlay').classList.add('active');
+                    const call = peer.call(currentConnection.peer, stream);
+                    setupCall(call);
+                })
+                .catch(e => alert("Camera/Mic Access Denied"));
+            };
+
+            function handleIncomingCall(call) {
+                const accept = confirm("Incoming Call. Accept?");
+                if(accept) {
+                    navigator.mediaDevices.getUserMedia({video: true, audio: true})
+                    .then(stream => {
+                        localStream = stream;
+                        document.getElementById('local-video').srcObject = stream;
+                        document.getElementById('call-overlay').classList.add('active');
+                        call.answer(stream);
+                        setupCall(call);
+                    });
+                } else {
+                    // call.close(); // Optional rejection logic
+                }
+            }
+
+            function setupCall(call) {
+                currentCall = call;
+                call.on('stream', stream => {
+                    remoteStream = stream;
+                    document.getElementById('remote-video').srcObject = stream;
+                });
+                call.on('close', endCallUI);
+            }
+
+            window.endCall = () => {
+                if(currentCall) currentCall.close();
+                if(currentConnection) currentConnection.send({type: 'call-end'});
+                endCallUI();
+            };
+
+            function endCallUI() {
+                document.getElementById('call-overlay').classList.remove('active');
+                if(localStream) localStream.getTracks().forEach(t => t.stop());
+                if(remoteStream) remoteStream = null;
+                currentCall = null;
+            }
+
+            // --- QR SCANNER ---
+            let qrScanner = null;
+            window.openScanner = () => {
+                document.getElementById('scanner-modal').classList.add('active');
+                qrScanner = new Html5Qrcode("qr-reader");
+                qrScanner.start({ facingMode: "environment" }, { fps: 10 }, 
+                    (decodedText) => {
+                        // Success
+                        window.closeScanner();
+                        window.location.hash = decodedText.split('#')[1];
+                        window.location.reload();
+                    }
+                );
+            };
+            window.closeScanner = () => {
+                document.getElementById('scanner-modal').classList.remove('active');
+                if(qrScanner) qrScanner.stop().then(() => qrScanner.clear());
+            };
+            
+            // --- RELOAD PROTECTION ---
+            window.onbeforeunload = (e) => {
+                if(currentConnection || isSending) {
+                    e.preventDefault();
+                    // Force client to reset to host on reload
+                    if(!isHost) {
+                        history.replaceState(null, null, ' ');
+                    }
+                    return "Active connection will be lost.";
+                }
+            };
+
+            initPeer();
+        });
+    </script>
+</body>
+</html>
