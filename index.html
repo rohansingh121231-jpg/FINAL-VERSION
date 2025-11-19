@@ -29,7 +29,7 @@
         }
         .header {
             padding: 15px; background: var(--primary); color: white; display: flex; 
-            justify-content: space-between; align-items: center; height: 60px;
+            justify-content: space-between; align-items: center; height: 60px; flex-shrink: 0;
         }
         .header h2 { font-size: 18px; }
         .status-badge { font-size: 12px; background: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 12px; }
@@ -50,13 +50,12 @@
         /* FILE TRANSFER SECTION */
         .files-panel {
             padding: 15px; background: white; border-top: 1px solid #ddd; 
-            display: flex; flex-direction: column; flex-grow: 1; /* Take available space */
-            min-height: 0; /* Important for flex scrolling */
+            display: flex; flex-direction: column; flex-grow: 1;
+            min-height: 0; max-height: 50%;
         }
-        .files-header { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: bold; align-items: center; }
+        .files-header { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: bold; align-items: center; flex-shrink: 0; }
         #file-input { display: none; }
         
-        /* SCROLLABLE LIST FOR FILES */
         #transfer-list {
             flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
             padding-right: 5px; min-height: 0; 
@@ -106,7 +105,18 @@
 
         .input-area { padding: 10px; background: #f0f2f5; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
         #msg-input { flex-grow: 1; padding: 12px; border: none; border-radius: 20px; outline: none; font-size: 15px; }
-        .send-btn { background: var(--primary); color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        
+        /* Updated Send Button Style */
+        .send-btn { 
+            background: var(--primary); color: white; border: none; 
+            width: 40px; height: 40px; border-radius: 50%; cursor: pointer; 
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; /* Prevents squeezing */
+        }
+
+        /* Typing Indicator */
+        .typing-indicator { font-size: 11px; color: var(--secondary); font-weight: bold; animation: flash 1.5s infinite; display: none; }
+        @keyframes flash { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
 
         /* Mobile Header Controls */
         .mobile-only { display: none; }
@@ -150,26 +160,13 @@
         /* MOBILE RESPONSIVE FIXES */
         @media (max-width: 768px) {
             .app-container { flex-direction: column; position: relative; overflow: hidden; }
-            
-            /* Sidebar behaves like a full screen modal or drawer */
-            .sidebar { 
-                width: 100%; height: 100%; position: absolute; top: 0; left: 0; 
-                z-index: 100; transform: translateX(0); /* Default visible for connection */
-            }
-            
+            .sidebar { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 100; transform: translateX(0); }
             .sidebar.hidden { transform: translateX(-100%); }
-            
             .chat-area { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 50; }
-            
             .mobile-only { display: inline-block; }
-            
-            .files-panel { max-height: none; /* Allow full height usage in sidebar view */ }
-            
-            /* Mobile Header Tweaks */
+            .files-panel { max-height: none; }
             .header { padding-right: 10px; }
             .btn-close-sidebar { background: none; border: none; color: white; font-size: 20px; cursor: pointer; margin-right: 10px; }
-            
-            /* Fix local video on mobile */
             #local-video { width: 90px; height: 120px; bottom: 120px; right: 10px; }
         }
     </style>
@@ -177,7 +174,7 @@
 <body>
 
     <div class="app-container">
-        <!-- SIDEBAR (FILES & CONNECTION) -->
+        <!-- SIDEBAR -->
         <div class="sidebar" id="sidebar">
             <div class="header">
                 <div style="display:flex; align-items:center;">
@@ -187,7 +184,6 @@
                 <span id="status-badge" class="status-badge">Disconnected</span>
             </div>
             
-            <!-- Connection Panel -->
             <div class="connect-panel" id="connect-panel">
                 <div id="qrcode"></div>
                 <p id="connect-msg" style="color:#666; margin-bottom:10px;">Scan to connect devices</p>
@@ -197,16 +193,13 @@
                 </div>
             </div>
 
-            <!-- File Transfer Panel -->
             <div class="files-panel" id="files-panel">
                 <div class="files-header">
                     <span>File Transfer</span>
                     <button class="btn-outline" style="padding:4px 10px; font-size:12px;" onclick="document.getElementById('file-input').click()">+ Add File</button>
                 </div>
                 <input type="file" id="file-input" multiple>
-                <div id="transfer-list">
-                    <!-- Transfers appear here -->
-                </div>
+                <div id="transfer-list"></div>
             </div>
         </div>
 
@@ -214,13 +207,12 @@
         <div class="chat-area" id="chat-area">
             <div class="chat-header">
                 <div class="chat-user">
-                    <!-- Mobile Menu Button to show files -->
                     <button class="icon-btn mobile-only" onclick="toggleSidebar()">📁</button>
-                    
                     <div class="avatar">👤</div>
                     <div>
                         <div style="font-weight:bold;">Peer</div>
                         <div style="font-size:11px; color:#666;" id="connection-status">Waiting...</div>
+                        <div class="typing-indicator" id="typing-indicator">Typing...</div>
                     </div>
                 </div>
                 <div class="chat-actions">
@@ -243,12 +235,13 @@
                 <button class="icon-btn" onclick="document.getElementById('img-input').click()">📎</button>
                 <input type="file" id="img-input" accept="image/*" style="display:none">
                 <input type="text" id="msg-input" placeholder="Type a message...">
-                <button class="send-btn" onclick="sendText()">➤</button>
+                <!-- Send Button with PreventDefault to keep focus -->
+                <button class="send-btn" onmousedown="event.preventDefault()" onclick="sendText()">➤</button>
             </div>
         </div>
     </div>
 
-    <!-- INCOMING CALL UI -->
+    <!-- OVERLAYS -->
     <div class="fullscreen-overlay" id="incoming-call-ui">
         <div class="call-card">
             <div class="call-avatar-lg"><img src="https://cdn-icons-png.flaticon.com/512/149/149071.png" width="100%"></div>
@@ -261,7 +254,6 @@
         </div>
     </div>
 
-    <!-- ACTIVE CALL UI -->
     <div class="fullscreen-overlay" id="active-call-ui">
         <div class="active-call-ui">
             <video id="remote-video" autoplay playsinline></video>
@@ -274,14 +266,12 @@
         </div>
     </div>
 
-    <!-- IMAGE MODAL -->
     <div class="modal" id="img-modal">
         <div class="modal-close" onclick="closeModal()">✕</div>
         <img id="modal-img" src="">
         <a id="modal-dl" href="#" class="modal-dl" download>Download</a>
     </div>
 
-    <!-- SCANNER -->
     <div id="scanner-overlay">
         <div class="scanner-close" onclick="stopScanner()">✕</div>
         <div id="qr-reader"></div>
@@ -292,20 +282,41 @@
         let activeCall = null, localStream = null;
         let replyContext = null;
         let fileQueue = [], activeTransfer = null, isTransferring = false;
+        let typingTimeout;
         
         document.addEventListener('DOMContentLoaded', () => {
-            // Force Client reset logic
             window.addEventListener('beforeunload', (e) => {
-                if(!isHost) {
-                     // On mobile/client, ensure next load is clean host mode
-                     history.replaceState(null, null, window.location.pathname);
-                }
+                if(!isHost) { history.replaceState(null, null, window.location.pathname); }
+            });
+            initApp();
+            
+            // Typing Listener
+            document.getElementById('msg-input').addEventListener('input', () => {
+                if(conn) conn.send({type: 'typing', isTyping: true});
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                    if(conn) conn.send({type: 'typing', isTyping: false});
+                }, 1000);
             });
             
-            initApp();
+            // Image Listener Fix
+            document.getElementById('img-input').addEventListener('change', function() {
+                const file = this.files[0];
+                if(!file) return;
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const msgId = Date.now();
+                    const base64 = e.target.result;
+                    // Try sending via PeerJS data channel (limit approx 16KB-1MB depending on browser)
+                    // For reliability, large images should be sent as files, but for chat UX we attempt this:
+                    conn.send({ type: 'image', content: base64, id: msgId });
+                    addImage(base64, 'sent', msgId);
+                };
+                reader.readAsDataURL(file);
+                this.value = ''; // Reset so same file can be selected again
+            });
         });
 
-        // Mobile Sidebar Toggle
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('hidden');
@@ -314,44 +325,29 @@
         function initApp() {
             const hash = window.location.hash.substring(1);
             isHost = !hash;
-            
             peer = new Peer({ config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } });
 
             peer.on('open', (id) => {
                 myId = id;
                 if (isHost) {
-                    new QRCode(document.getElementById('qrcode'), {
-                        text: window.location.href + '#' + id, width: 180, height: 180
-                    });
-                    // Desktop/Host starts with sidebar visible
+                    new QRCode(document.getElementById('qrcode'), { text: window.location.href + '#' + id, width: 180, height: 180 });
                 } else {
-                    // Mobile/Client starts connected logic
                     document.getElementById('connect-panel').style.display = 'none';
                     connectToPeer(hash);
-                    // Hide sidebar initially on mobile to show chat
-                    if(window.innerWidth < 768) {
-                        document.getElementById('sidebar').classList.add('hidden');
-                    }
+                    if(window.innerWidth < 768) document.getElementById('sidebar').classList.add('hidden');
                 }
             });
 
             peer.on('connection', (c) => setupConnection(c));
             peer.on('call', (call) => {
                 document.getElementById('incoming-call-ui').style.display = 'flex';
-                document.getElementById('incoming-call-type').innerText = 
-                    call.metadata?.type === 'video' ? 'Incoming Video Call...' : 'Incoming Voice Call...';
+                document.getElementById('incoming-call-type').innerText = call.metadata?.type === 'video' ? 'Incoming Video Call...' : 'Incoming Voice Call...';
                 window.pendingCall = call;
             });
-            
-            peer.on('error', () => {
-                if(!isHost) { window.location.hash = ''; window.location.reload(); }
-            });
+            peer.on('error', () => { if(!isHost) { window.location.hash = ''; window.location.reload(); } });
         }
 
-        function connectToPeer(id) {
-            const c = peer.connect(id);
-            setupConnection(c);
-        }
+        function connectToPeer(id) { setupConnection(peer.connect(id)); }
 
         function setupConnection(c) {
             conn = c;
@@ -360,24 +356,20 @@
                 document.getElementById('status-badge').style.background = 'var(--green)';
                 document.getElementById('connect-panel').style.display = 'none';
                 document.getElementById('connection-status').innerText = 'Online';
-                
-                // Auto-hide sidebar on mobile once connected to show chat
-                if(window.innerWidth < 768) {
-                    document.getElementById('sidebar').classList.add('hidden');
-                }
+                if(window.innerWidth < 768) document.getElementById('sidebar').classList.add('hidden');
             });
             conn.on('data', handleData);
-            conn.on('close', () => {
-                alert('Connection disconnected');
-                window.location.hash = '';
-                window.location.reload();
-            });
+            conn.on('close', () => { alert('Disconnected'); window.location.hash = ''; window.location.reload(); });
         }
 
         function handleData(data) {
             switch(data.type) {
                 case 'text': addMessage(data.content, 'received', data.reply); conn.send({type:'ack', id:data.id}); break;
                 case 'image': addImage(data.content, 'received', data.id); conn.send({type:'ack', id:data.id}); break;
+                case 'typing': 
+                    const ind = document.getElementById('typing-indicator');
+                    ind.style.display = data.isTyping ? 'block' : 'none';
+                    break;
                 case 'ack': markRead(data.id); break;
                 case 'dl-notify': markDownloaded(data.id); break;
                 case 'file-meta': startReceivingFile(data); break;
@@ -387,7 +379,6 @@
             }
         }
 
-        // Share
         async function shareQRCode() {
             const canvas = document.querySelector('#qrcode canvas');
             const blob = await (await fetch(canvas.toDataURL())).blob();
@@ -395,7 +386,7 @@
             if (navigator.share) navigator.share({ files: [file], url: window.location.href + '#' + myId });
         }
 
-        // Chat & File Logic same as before but cleaner
+        // Chat Logic
         function sendText() {
             const input = document.getElementById('msg-input');
             const val = input.value.trim();
@@ -403,7 +394,10 @@
             const id = Date.now();
             conn.send({type:'text', content:val, id:id, reply:replyContext});
             addMessage(val, 'sent', replyContext, id);
-            input.value = ''; cancelReply();
+            input.value = ''; 
+            cancelReply();
+            // Keyboard logic: focus stays because we used preventDefault on mousedown
+            input.focus(); 
         }
 
         function addMessage(text, type, reply, id) {
@@ -487,10 +481,22 @@
             const eta = document.getElementById(`eta-${id}`);
             if(bar) bar.style.width = pct + '%';
             if(txt) txt.innerText = pct + '%';
+            
+            // Real-time ETA Calculation
             const elapsed = (Date.now() - start)/1000;
             const rate = cur/elapsed;
             const left = (tot-cur)/rate;
-            if(eta && isFinite(left)) eta.innerText = left < 1 ? 'Almost done' : Math.ceil(left)+'s left';
+            
+            if(eta && isFinite(left)) {
+                eta.innerText = left < 1 ? 'Done' : formatTime(left) + ' left';
+            }
+        }
+        
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
         }
 
         function cancelTransfer(id, type) {
@@ -508,7 +514,6 @@
             delete receiving[id];
         }
 
-        // Utils
         function scrollToBottom() { document.getElementById('messages').scrollTop = 1000000; }
         function markRead(id) { const el = document.querySelector(`#msg-${id} .double-tick`); if(el) el.innerText='✓✓'; }
         function markDownloaded(id) { const el = document.querySelector(`#msg-${id} .download-indicator`); if(el) el.style.display='block'; }
@@ -522,7 +527,6 @@
         function setReply(t) { replyContext={text:t}; document.getElementById('reply-bar').style.display='flex'; document.getElementById('reply-text-preview').innerText=t.substring(0,50)+'...'; }
         function cancelReply() { replyContext=null; document.getElementById('reply-bar').style.display='none'; }
 
-        // Call
         function initCall(vid) {
             navigator.mediaDevices.getUserMedia({video:vid, audio:true}).then(s=>{
                 localStream=s; document.getElementById('active-call-ui').style.display='flex';
@@ -556,7 +560,6 @@
         function toggleCam() { const t=localStream.getVideoTracks()[0]; if(t){ t.enabled=!t.enabled; document.getElementById('btn-cam').classList.toggle('off'); } }
         function rejectCall() { document.getElementById('incoming-call-ui').style.display='none'; window.pendingCall?.close(); }
 
-        // Scanner
         let qrScanner;
         function startScanner() {
             document.getElementById('scanner-overlay').style.display='flex';
