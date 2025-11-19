@@ -103,8 +103,13 @@
         .reply-btn { position: absolute; top: 5px; right: -25px; background: white; border-radius: 50%; width: 20px; height: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); cursor: pointer; display: none; align-items: center; justify-content: center; font-size: 12px; }
         .msg:hover .reply-btn { display: flex; }
 
-        .input-area { padding: 10px; background: #f0f2f5; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-        #msg-input { flex-grow: 1; padding: 12px; border: none; border-radius: 20px; outline: none; font-size: 15px; }
+        /* FIXED INPUT AREA */
+        .input-area { 
+            padding: 10px; background: #f0f2f5; display: flex; align-items: center; gap: 8px; flex-shrink: 0; 
+            width: 100%; /* Ensure full width */
+            box-sizing: border-box; /* Include padding in width */
+        }
+        #msg-input { flex-grow: 1; padding: 12px; border: none; border-radius: 20px; outline: none; font-size: 15px; min-width: 0; /* Prevents input from forcing width */ }
         
         /* Updated Send Button Style */
         .send-btn { 
@@ -112,6 +117,7 @@
             width: 40px; height: 40px; border-radius: 50%; cursor: pointer; 
             display: flex; align-items: center; justify-content: center;
             flex-shrink: 0; /* Prevents squeezing */
+            margin-right: 2px; /* Slight adjustment */
         }
 
         /* Typing Indicator */
@@ -159,7 +165,7 @@
 
         /* MOBILE RESPONSIVE FIXES */
         @media (max-width: 768px) {
-            .app-container { flex-direction: column; position: relative; overflow: hidden; }
+            .app-container { flex-direction: column; position: relative; overflow: hidden; width: 100%; }
             .sidebar { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 100; transform: translateX(0); }
             .sidebar.hidden { transform: translateX(-100%); }
             .chat-area { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 50; }
@@ -168,6 +174,9 @@
             .header { padding-right: 10px; }
             .btn-close-sidebar { background: none; border: none; color: white; font-size: 20px; cursor: pointer; margin-right: 10px; }
             #local-video { width: 90px; height: 120px; bottom: 120px; right: 10px; }
+            
+            /* Better padding for mobile input */
+            .input-area { padding: 8px; gap: 6px; }
         }
     </style>
 </head>
@@ -235,7 +244,7 @@
                 <button class="icon-btn" onclick="document.getElementById('img-input').click()">📎</button>
                 <input type="file" id="img-input" accept="image/*" style="display:none">
                 <input type="text" id="msg-input" placeholder="Type a message...">
-                <!-- Send Button with PreventDefault to keep focus -->
+                <!-- Send Button -->
                 <button class="send-btn" onmousedown="event.preventDefault()" onclick="sendText()">➤</button>
             </div>
         </div>
@@ -290,13 +299,22 @@
             });
             initApp();
             
+            const msgInput = document.getElementById('msg-input');
+
             // Typing Listener
-            document.getElementById('msg-input').addEventListener('input', () => {
+            msgInput.addEventListener('input', () => {
                 if(conn) conn.send({type: 'typing', isTyping: true});
                 clearTimeout(typingTimeout);
                 typingTimeout = setTimeout(() => {
                     if(conn) conn.send({type: 'typing', isTyping: false});
                 }, 1000);
+            });
+
+            // ENTER KEY TO SEND (Desktop Fix)
+            msgInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendText();
+                }
             });
             
             // Image Listener Fix
@@ -307,13 +325,11 @@
                 reader.onload = function(e) {
                     const msgId = Date.now();
                     const base64 = e.target.result;
-                    // Try sending via PeerJS data channel (limit approx 16KB-1MB depending on browser)
-                    // For reliability, large images should be sent as files, but for chat UX we attempt this:
                     conn.send({ type: 'image', content: base64, id: msgId });
                     addImage(base64, 'sent', msgId);
                 };
                 reader.readAsDataURL(file);
-                this.value = ''; // Reset so same file can be selected again
+                this.value = ''; 
             });
         });
 
@@ -396,7 +412,6 @@
             addMessage(val, 'sent', replyContext, id);
             input.value = ''; 
             cancelReply();
-            // Keyboard logic: focus stays because we used preventDefault on mousedown
             input.focus(); 
         }
 
