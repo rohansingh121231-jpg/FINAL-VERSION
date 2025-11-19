@@ -1,790 +1,800 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>QR Send - E2E Encrypted</title>
+    <title>QR Send - Pro</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
         :root {
-            --bg-primary: #ffffff; --bg-secondary: #f8f9fa; --bg-card: #ffffff;
-            --text-primary: #1a1a1a; --text-secondary: #666666;
-            --accent: #4285f4; --accent-hover: #3367d6; --border: #e0e0e0;
-            --shadow: rgba(0, 0, 0, 0.1); --success: #34a853; --error: #ea4335;
-            --bg-sender: #dcf8c6; --text-sender: #1a1a1a;
+            --primary: #075e54; --secondary: #128c7e; --light: #dcf8c6; --dark: #1f2c34;
+            --bg: #e5ddd5; --white: #ffffff; --red: #d32f2f; --green: #25d366;
         }
-        body.dark-mode {
-            --bg-primary: #0f0f0f; --bg-secondary: #1a1a1a; --bg-card: #1e1e1e;
-            --text-primary: #e8e8e8; --text-secondary: #b0b0b0; --border: #333333;
-            --shadow: rgba(255, 255, 255, 0.05); --bg-sender: #224838; --text-sender: #e8e8e8;
-        }
-        body {
-            font-family: 'Google Sans', 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
-            color: var(--text-primary); min-height: 100vh; display: flex;
-            align-items: center; justify-content: center; padding: 0;
-            overflow-x: hidden; position: relative;
-        }
-        body::before {
-            content: ''; position: fixed; top: -50%; left: -50%; width: 200%; height: 200%;
-            background: radial-gradient(circle, var(--accent) 1px, transparent 1px);
-            background-size: 50px 50px; opacity: 0.03; z-index: 0;
-            animation: bgMove 20s linear infinite;
-        }
-        @keyframes bgMove { 0% { transform: translate(0, 0); } 100% { transform: translate(50px, 50px); } }
-
-        .theme-toggle {
-            position: fixed; top: 15px; right: 15px; width: 45px; height: 45px;
-            background: var(--bg-card); border: 2px solid var(--border); border-radius: 50%;
-            display: flex; align-items: center; justify-content: center; cursor: pointer;
-            z-index: 1000; box-shadow: 0 4px 12px var(--shadow);
-        }
-        .theme-toggle svg { width: 22px; height: 22px; fill: var(--text-primary); }
-
-        .container {
-            position: relative; width: 100%; background: var(--bg-card); overflow: hidden; z-index: 1;
-            height: 100vh; display: flex; flex-direction: column;
-        }
-        .sidebar { flex-shrink: 0; }
-        .chat-main { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-secondary); }
+        body { background: var(--bg); height: 100vh; display: flex; justify-content: center; overflow: hidden; }
         
-        /* Scrollbar */
-        .container::-webkit-scrollbar { width: 6px; }
-        .container::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
-
-        header {
-            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);
-            padding: 20px; text-align: center; color: white;
+        /* Dark Mode toggle logic removed to keep code clean, default works best */
+        
+        .app-container {
+            width: 100%; max-width: 1000px; height: 100%; background: var(--white); 
+            display: flex; box-shadow: 0 0 20px rgba(0,0,0,0.1); position: relative;
         }
-        header h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
-        #status { font-size: 13px; opacity: 0.9; font-weight: 500; }
 
-        /* Main Areas */
-        main { padding: 20px; text-align: center; }
-        #qrcode { padding: 15px; background: white; border-radius: 12px; margin: 0 auto 15px; display: inline-block; }
-        #qrcode img { max-width: 100%; height: auto; }
-        
-        .share-button {
-            padding: 10px 18px; border: 2px solid var(--border); background: var(--bg-card);
-            color: var(--text-primary); border-radius: 10px; font-weight: 600; font-size: 13px;
-            cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin: 5px;
+        /* SIDEBAR (Connection & Files) */
+        .sidebar {
+            width: 350px; border-right: 1px solid #ddd; display: flex; flex-direction: column; background: #f0f2f5;
         }
-        .primary-share { background: var(--accent); color: white; border-color: var(--accent); }
-        .scanner-button { background: var(--success); color: white; border-color: var(--success); }
-
-        /* Connection Overlay */
-        .connection-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center;
-            z-index: 9999; backdrop-filter: blur(10px);
+        .header {
+            padding: 15px; background: var(--primary); color: white; display: flex; 
+            justify-content: space-between; align-items: center;
         }
-        .connection-overlay.active { display: flex; }
-        .lock-svg { width: 100px; height: 100px; }
-        .lock-body { animation: lockClose 0.8s ease forwards; }
-        .lock-shackle { animation: shackleClose 0.8s ease forwards 0.3s; }
-        .checkmark { animation: checkmarkDraw 0.5s ease forwards 1s; }
-        @keyframes lockClose { 0% { transform: translateY(20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
-        @keyframes shackleClose { 0% { transform: translateY(-10px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
-        @keyframes checkmarkDraw { 0% { stroke-dashoffset: 100; opacity: 0; } 100% { stroke-dashoffset: 0; opacity: 1; } }
+        .header h2 { font-size: 18px; }
+        .status-badge { font-size: 12px; background: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 12px; }
 
-        /* Scanner */
-        .scanner-modal {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000;
-            display: none; flex-direction: column; z-index: 10000;
+        .connect-panel { padding: 20px; text-align: center; flex-grow: 1; overflow-y: auto; }
+        #qrcode { background: white; padding: 10px; display: inline-block; border-radius: 8px; margin-bottom: 15px; }
+        #qrcode img { display: block; }
+        
+        .btn {
+            padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; 
+            font-weight: bold; display: inline-flex; align-items: center; gap: 8px; margin: 5px;
+            transition: 0.2s;
         }
-        .scanner-modal.active { display: flex; }
-        .scanner-header { padding: 15px; background: rgba(0,0,0,0.8); display: flex; justify-content: space-between; color: white; z-index: 10001;}
-        .close-scanner { background: var(--error); color: white; border: none; width: 35px; height: 35px; border-radius: 50%; font-size: 20px; cursor: pointer; }
-        #qr-reader { width: 100%; height: 100%; position: relative; }
-        #qr-reader video { object-fit: cover; width: 100%; height: 100%; }
+        .btn-primary { background: var(--secondary); color: white; }
+        .btn-outline { border: 1px solid var(--secondary); color: var(--secondary); background: transparent; }
+        .btn:active { transform: scale(0.98); }
 
-        /* Transfer UI */
-        .transfer-area { padding: 20px; background: var(--bg-secondary); border-top: 1px solid var(--border); }
-        .transfer-area h3 { margin-bottom: 10px; font-size: 16px; font-weight: 600; }
-        #file-input { width: 100%; padding: 12px; border: 2px dashed var(--border); border-radius: 10px; background: var(--bg-card); margin-bottom: 10px; }
-        
-        .progress-container { padding: 10px; background: var(--bg-card); border-radius: 10px; margin-top: 10px; box-shadow: 0 2px 5px var(--shadow); }
-        .progress-top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
-        .progress-label { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%; }
-        .cancel-button { background: var(--error); color: white; border: none; padding: 4px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; }
-        .progress-bar-bg { height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden; }
-        .progress-bar { 
-            height: 100%; background: var(--accent); width: 0%; transition: width 0.2s; 
-            background-image: linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%);
-            background-size: 20px 20px; animation: progress-stripes 1s linear infinite;
+        /* FILE TRANSFER SECTION */
+        .files-panel {
+            padding: 15px; background: white; border-top: 1px solid #ddd; 
+            display: flex; flex-direction: column; max-height: 40%; /* Limit height */
         }
-        @keyframes progress-stripes { from { background-position: 20px 0; } to { background-position: 0 0; } }
-        .progress-stats { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-secondary); margin-top: 4px; }
-
-        /* Chat */
-        .chat-container { display: none; flex-direction: column; height: 100%; }
-        .chat-header { padding: 10px 15px; background: var(--bg-card); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-        .chat-header h3 { font-size: 16px; font-weight: 600; }
-        .chat-call-buttons { display: flex; gap: 15px; }
-        .call-button { background: none; border: none; cursor: pointer; color: var(--text-primary); }
-        .call-button svg { width: 22px; height: 22px; fill: currentColor; }
-        .call-button#end-call-button { color: var(--error); display: none; }
-
-        .chat-messages { flex-grow: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-        .chat-message { max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 14px; position: relative; word-wrap: break-word; }
-        .chat-message.sender { align-self: flex-end; background: var(--bg-sender); color: var(--text-sender); border-bottom-right-radius: 2px; }
-        .chat-message.receiver { align-self: flex-start; background: var(--bg-card); border: 1px solid var(--border); border-bottom-left-radius: 2px; }
+        .files-header { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: bold; }
+        #file-input { display: none; }
         
-        .chat-message img { max-width: 200px; border-radius: 8px; cursor: pointer; display: block; margin-bottom: 4px; }
-        .msg-status { font-size: 10px; text-align: right; display: block; opacity: 0.7; }
-        .msg-status.seen { color: var(--accent); }
-        .download-status { font-size: 9px; font-style: italic; display: none; opacity: 0.7; text-align: right; }
-        
-        .chat-input-area { padding: 10px; background: var(--bg-card); display: flex; gap: 8px; border-top: 1px solid var(--border); }
-        #chat-input { flex-grow: 1; padding: 10px; border-radius: 20px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary); }
-        #chat-send-button, #chat-attach-button { background: var(--accent); color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        #chat-attach-button { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); }
-        
-        /* Reply UI */
-        .chat-message-reply-btn { position: absolute; top: -10px; right: -10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 50%; width: 24px; height: 24px; display: none; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .chat-message:hover .chat-message-reply-btn { display: flex; }
-        .message-reply-context { font-size: 11px; padding: 4px; border-left: 3px solid var(--accent); background: rgba(0,0,0,0.05); margin-bottom: 4px; border-radius: 4px; }
-        .reply-context-bar { display: none; padding: 8px 12px; background: var(--bg-secondary); border-top: 1px solid var(--border); font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
-        
-        .chat-placeholder { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-secondary); }
-        .chat-placeholder svg { width: 60px; height: 60px; opacity: 0.3; margin-bottom: 10px; fill: currentColor; }
+        /* SCROLLABLE LIST FOR FILES */
+        #transfer-list {
+            flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+            padding-right: 5px; min-height: 0; /* Crucial for scrolling */
+        }
+        /* Scrollbar styling */
+        #transfer-list::-webkit-scrollbar { width: 5px; }
+        #transfer-list::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
 
-        /* Modals & Overlays */
-        .image-modal-overlay, .call-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 11000; display: none; align-items: center; justify-content: center; flex-direction: column; }
-        .image-modal-overlay.active, .call-overlay.active { display: flex; }
-        .image-modal-content { max-width: 90%; max-height: 80%; object-fit: contain; }
-        .image-modal-toolbar { position: absolute; top: 20px; right: 20px; display: flex; gap: 15px; }
-        .modal-btn { background: rgba(255,255,255,0.2); border: none; width: 40px; height: 40px; border-radius: 50%; color: white; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        .modal-btn:hover { background: rgba(255,255,255,0.4); }
+        .transfer-item {
+            background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #eee;
+            position: relative; font-size: 13px;
+        }
+        .t-info { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .t-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+        .t-bar-bg { height: 6px; background: #ddd; border-radius: 3px; overflow: hidden; }
+        .t-bar-fill { height: 100%; background: var(--green); width: 0%; transition: width 0.2s; }
+        .t-meta { display: flex; justify-content: space-between; font-size: 11px; color: #666; margin-top: 4px; }
+        .btn-cancel {
+            background: transparent; color: var(--red); border: none; font-size: 16px; 
+            font-weight: bold; cursor: pointer; line-height: 1;
+        }
 
-        /* Video Call UI */
-        .video-grid { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
+        /* CHAT SECTION */
+        .chat-area { flex-grow: 1; display: flex; flex-direction: column; background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); background-color: #e5ddd5; position: relative; }
+        
+        .chat-header {
+            padding: 10px 15px; background: #f0f2f5; border-bottom: 1px solid #ddd; 
+            display: flex; justify-content: space-between; align-items: center; height: 60px;
+        }
+        .chat-user { display: flex; align-items: center; gap: 10px; }
+        .avatar { width: 40px; height: 40px; background: #ddd; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; }
+        .chat-actions { display: flex; gap: 15px; }
+        .icon-btn { background: none; border: none; cursor: pointer; color: var(--primary); font-size: 20px; padding: 5px; }
+        .icon-btn:hover { background: rgba(0,0,0,0.05); border-radius: 50%; }
+
+        .messages { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+        .msg { max-width: 75%; padding: 8px 12px; border-radius: 8px; font-size: 14px; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .msg.sent { align-self: flex-end; background: var(--light); border-top-right-radius: 0; }
+        .msg.received { align-self: flex-start; background: white; border-top-left-radius: 0; }
+        .msg-time { font-size: 10px; color: #999; float: right; margin-top: 5px; margin-left: 10px; display: flex; align-items: center; gap: 3px; }
+        .double-tick { color: #4fc3f7; font-weight: bold; font-size: 10px; }
+        
+        .msg img { max-width: 250px; border-radius: 6px; cursor: pointer; }
+        
+        /* Reply Context */
+        .reply-bar { 
+            background: rgba(255,255,255,0.9); padding: 5px 15px; border-left: 5px solid var(--secondary); 
+            display: none; justify-content: space-between; font-size: 12px; color: #555;
+        }
+        .msg-reply-preview { background: rgba(0,0,0,0.05); padding: 4px; border-left: 3px solid var(--secondary); margin-bottom: 4px; border-radius: 4px; font-size: 11px; }
+        .reply-btn { position: absolute; top: 5px; right: -25px; background: white; border-radius: 50%; width: 20px; height: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); cursor: pointer; display: none; align-items: center; justify-content: center; font-size: 12px; }
+        .msg:hover .reply-btn { display: flex; }
+
+        .input-area { padding: 10px; background: #f0f2f5; display: flex; align-items: center; gap: 10px; }
+        #msg-input { flex-grow: 1; padding: 12px; border: none; border-radius: 20px; outline: none; font-size: 15px; }
+        .send-btn { background: var(--primary); color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+        /* CALL OVERLAYS */
+        .fullscreen-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 2000;
+            background: rgba(0,0,0,0.9); display: none; flex-direction: column;
+            align-items: center; justify-content: center; color: white;
+        }
+        /* Incoming Call */
+        .call-card { background: #1f2c34; padding: 40px; border-radius: 20px; text-align: center; width: 300px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .call-avatar-lg { width: 100px; height: 100px; background: #ddd; border-radius: 50%; margin: 0 auto 20px; overflow: hidden; }
+        .call-actions { display: flex; justify-content: space-around; margin-top: 40px; }
+        .call-btn { width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); transition: transform 0.2s; }
+        .btn-accept { background: var(--green); color: white; animation: pulse 1.5s infinite; }
+        .btn-reject { background: var(--red); color: white; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(37, 211, 102, 0); } 100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0); } }
+
+        /* Active Call */
+        .active-call-ui { width: 100%; height: 100%; position: relative; display: flex; flex-direction: column; }
         #remote-video { width: 100%; height: 100%; object-fit: cover; }
-        #local-video { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; background: #222; border: 2px solid white; border-radius: 8px; object-fit: cover; }
-        video { transform: scaleX(-1); } /* Mirror */
+        #local-video { position: absolute; bottom: 100px; right: 20px; width: 120px; height: 160px; background: #333; border-radius: 10px; border: 2px solid white; object-fit: cover; }
+        .call-controls-bar { 
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.6); padding: 15px 30px; border-radius: 30px;
+            display: flex; gap: 20px;
+        }
+        .control-btn { width: 50px; height: 50px; border-radius: 50%; border: none; background: rgba(255,255,255,0.2); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        .control-btn.off { background: white; color: black; }
+        .btn-hangup { background: var(--red); }
 
-        @media (min-width: 768px) {
-            body { padding: 20px; }
-            .container { flex-direction: row; max-width: 1000px; max-height: 90vh; border-radius: 20px; box-shadow: 0 10px 30px var(--shadow); }
-            .sidebar { width: 320px; border-right: 1px solid var(--border); overflow-y: auto; }
+        /* Modals */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 3000; display: none; justify-content: center; align-items: center; }
+        .modal img { max-width: 90%; max-height: 90%; border-radius: 8px; }
+        .modal-close { position: absolute; top: 20px; right: 20px; color: white; font-size: 30px; cursor: pointer; }
+        .modal-dl { position: absolute; bottom: 30px; background: white; color: black; padding: 10px 20px; border-radius: 20px; text-decoration: none; font-weight: bold; }
+
+        /* Scanner Overlay */
+        #scanner-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 4000; display: none; flex-direction: column; }
+        #qr-reader { flex-grow: 1; }
+        .scanner-close { position: absolute; top: 20px; right: 20px; color: white; z-index: 4001; font-size: 30px; cursor: pointer; }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .app-container { flex-direction: column; }
+            .sidebar { width: 100%; height: auto; flex-shrink: 0; border-right: none; border-bottom: 1px solid #ddd; }
+            .connect-panel { display: none; } /* Hide connection QR on mobile once connected or if scanning */
+            .chat-area { height: 100%; }
+            .files-panel { max-height: 150px; } /* Smaller file area on mobile */
+            #local-video { width: 90px; height: 120px; bottom: 90px; }
+            /* Toggle view logic via JS for mobile sidebar/chat */
         }
     </style>
 </head>
 <body>
 
-    <div class="theme-toggle" onclick="toggleTheme()">
-        <svg viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" stroke="currentColor" stroke-width="2" fill="none"/></svg>
-    </div>
+    <div class="app-container">
+        <!-- SIDEBAR -->
+        <div class="sidebar" id="sidebar">
+            <div class="header">
+                <h2>QR Send</h2>
+                <span id="status-badge" class="status-badge">Disconnected</span>
+            </div>
+            
+            <!-- Connection Panel -->
+            <div class="connect-panel" id="connect-panel">
+                <div id="qrcode"></div>
+                <p id="connect-msg" style="color:#666; margin-bottom:10px;">Scan to connect devices</p>
+                <div style="display:flex; justify-content:center; flex-wrap:wrap;">
+                    <button class="btn btn-outline" onclick="shareQRCode()">🔗 Share QR</button>
+                    <button class="btn btn-primary" onclick="startScanner()">📷 Scan QR</button>
+                </div>
+            </div>
 
-    <!-- Image Modal -->
-    <div class="image-modal-overlay" id="image-modal-overlay">
-        <div class="image-modal-toolbar">
-            <button class="modal-btn" id="image-modal-download" title="Download">⬇</button>
-            <button class="modal-btn" id="image-modal-close" title="Close">✕</button>
+            <!-- File Transfer Panel -->
+            <div class="files-panel">
+                <div class="files-header">
+                    <span>File Transfer</span>
+                    <button class="btn-outline" style="padding:2px 8px; font-size:12px;" onclick="document.getElementById('file-input').click()">+ Add File</button>
+                </div>
+                <input type="file" id="file-input" multiple>
+                <div id="transfer-list">
+                    <!-- Transfers appear here -->
+                </div>
+            </div>
         </div>
-        <img class="image-modal-content" id="image-modal-content">
+
+        <!-- CHAT AREA -->
+        <div class="chat-area" id="chat-area" style="display:none;"> <!-- Hidden initially on mobile/until connect -->
+            <div class="chat-header">
+                <div class="chat-user">
+                    <div class="avatar">👤</div>
+                    <div>
+                        <div style="font-weight:bold;">Connected Peer</div>
+                        <div style="font-size:11px; color:#666;">Online</div>
+                    </div>
+                </div>
+                <div class="chat-actions">
+                    <button class="icon-btn" onclick="initCall(false)" title="Voice Call">📞</button>
+                    <button class="icon-btn" onclick="initCall(true)" title="Video Call">📹</button>
+                </div>
+            </div>
+
+            <div class="messages" id="messages">
+                <!-- Messages here -->
+            </div>
+
+            <!-- Reply Preview -->
+            <div class="reply-bar" id="reply-bar">
+                <div>
+                    <div style="color:var(--primary); font-weight:bold; font-size:10px;">Replying to...</div>
+                    <div id="reply-text-preview"></div>
+                </div>
+                <button onclick="cancelReply()" style="border:none; background:none; font-size:16px;">✕</button>
+            </div>
+
+            <div class="input-area">
+                <button class="icon-btn" onclick="document.getElementById('img-input').click()">📎</button>
+                <input type="file" id="img-input" accept="image/*" style="display:none">
+                <input type="text" id="msg-input" placeholder="Type a message...">
+                <button class="send-btn" onclick="sendText()">➤</button>
+            </div>
+        </div>
     </div>
 
-    <!-- Call Overlay -->
-    <div class="call-overlay" id="call-overlay">
-        <div class="video-grid">
+    <!-- INCOMING CALL MODAL -->
+    <div class="fullscreen-overlay" id="incoming-call-ui">
+        <div class="call-card">
+            <div class="call-avatar-lg"><img src="https://cdn-icons-png.flaticon.com/512/149/149071.png" width="100%"></div>
+            <h2 id="incoming-call-type">Incoming Video Call...</h2>
+            <p style="color:#aaa; margin-top:10px;">Peer is calling you</p>
+            <div class="call-actions">
+                <button class="call-btn btn-reject" onclick="rejectCall()">📞</button>
+                <button class="call-btn btn-accept" onclick="answerCall()">📞</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ACTIVE CALL UI -->
+    <div class="fullscreen-overlay" id="active-call-ui">
+        <div class="active-call-ui">
             <video id="remote-video" autoplay playsinline></video>
             <video id="local-video" autoplay playsinline muted></video>
-        </div>
-        <div style="position:absolute; bottom: 30px; display:flex; gap:20px;">
-             <button class="modal-btn" style="background: red; width: 60px; height: 60px;" onclick="endCall()">📞</button>
-        </div>
-    </div>
-
-    <div class="connection-overlay" id="connection-overlay">
-        <div class="lock-animation">
-            <svg class="lock-svg" viewBox="0 0 100 100"><rect class="lock-body" x="30" y="45" width="40" height="35" rx="5" fill="#4285f4"/><path class="lock-shackle" d="M35 45 V35 C35 25 40 20 50 20 C60 20 65 25 65 35 V45" stroke="#4285f4" stroke-width="5" fill="none"/><polyline class="checkmark" points="40,62 47,69 62,54" stroke="#34a853" stroke-width="4" fill="none"/></svg>
-            <p style="color: white; font-weight:600; margin-top:10px;">E2E Encrypted</p>
+            <div class="call-controls-bar">
+                <button class="control-btn" id="btn-mute" onclick="toggleMic()">🎤</button>
+                <button class="control-btn btn-hangup" onclick="endCall()">📞</button>
+                <button class="control-btn" id="btn-cam" onclick="toggleCam()">📷</button>
+            </div>
         </div>
     </div>
 
-    <div class="scanner-modal" id="scanner-modal">
-        <div class="scanner-header"><h2>Scan QR</h2><button class="close-scanner" onclick="closeScanner()">✕</button></div>
+    <!-- IMAGE PREVIEW MODAL -->
+    <div class="modal" id="img-modal">
+        <div class="modal-close" onclick="closeModal()">✕</div>
+        <img id="modal-img" src="">
+        <a id="modal-dl" href="#" class="modal-dl" download>Download</a>
+    </div>
+
+    <!-- SCANNER OVERLAY -->
+    <div id="scanner-overlay">
+        <div class="scanner-close" onclick="stopScanner()">✕</div>
         <div id="qr-reader"></div>
     </div>
 
-    <div class="container">
-        <div class="sidebar">
-            <header><h1>QR Send</h1><div id="status">Disconnected</div></header>
-            <main>
-                <div id="qr-code-container">
-                    <div id="qrcode"></div>
-                    <p>Scan to connect</p>
-                    <button class="scanner-button share-button" onclick="openScanner()">📷 Scan QR</button>
-                </div>
-                <div id="connected-view" style="display:none;">
-                    <p style="color:var(--success); font-weight:bold; margin-bottom:15px;">✅ Connected</p>
-                </div>
-            </main>
-            <div class="transfer-area">
-                <h3>Send Files</h3>
-                <input type="file" id="file-input" disabled multiple>
-                <div id="transfer-status">Idle</div>
-                <div id="transfer-list-container"></div>
-            </div>
-        </div>
-
-        <div class="chat-main">
-            <div class="chat-placeholder" id="chat-placeholder">
-                <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-                <p>Scan QR to start chatting</p>
-            </div>
-            <div class="chat-container" id="chat-container">
-                <div class="chat-header">
-                    <h3>Chat</h3>
-                    <div class="chat-call-buttons">
-                        <button class="call-button" onclick="startCall(false)">📞</button>
-                        <button class="call-button" onclick="startCall(true)">📹</button>
-                    </div>
-                </div>
-                <div class="chat-messages" id="chat-messages"></div>
-                
-                <!-- Reply Context -->
-                <div class="reply-context-bar" id="reply-context-bar" style="display:none;">
-                    <span id="reply-text">Replying...</span>
-                    <button onclick="cancelReply()" style="background:none;border:none;cursor:pointer;">✕</button>
-                </div>
-
-                <div class="chat-input-area">
-                    <button id="chat-attach-button" onclick="document.getElementById('chat-image-input').click()">📎</button>
-                    <input type="file" id="chat-image-input" accept="image/*" style="display:none">
-                    <input type="text" id="chat-input" placeholder="Type...">
-                    <button id="chat-send-button">➤</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <script>
-        // --- STATE VARIABLES (Defined at top scope to prevent ReferenceErrors) ---
-        let peer = null;
-        let currentConnection = null;
-        let isHost = false;
-        let fileQueue = [];
-        let receivingFiles = new Map();
-        let activeSend = null;
-        let isSending = false;
-        let localStream = null;
-        let remoteStream = null;
-        let currentCall = null;
-        let isCallActive = false;
-        let replyingTo = null;
+        // --- CORE STATE ---
+        let peer, conn, myId, isHost;
+        let activeCall = null, localStream = null;
+        let replyContext = null;
+        let fileQueue = [], activeTransfer = null, isTransferring = false;
         
-        // --- HELPER FUNCTIONS (Defined before usage) ---
-        
-        function formatBytes(bytes, decimals = 2) {
-            if (bytes === 0) return '0 B';
-            const k = 1024;
-            const dm = decimals < 0 ? 0 : decimals;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-        }
-
-        function toggleTheme() {
-            document.body.classList.toggle('dark-mode');
-            localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
-        }
-        if(localStorage.getItem('theme') === 'dark') toggleTheme();
-
-        // --- TRANSFER LOGIC FUNCTIONS ---
-
-        function cancelReceive(fileId) {
-            console.log(`Cancelling receive for ${fileId}`);
-            receivingFiles.delete(fileId);
-            const ui = document.getElementById(`transfer-${fileId}`);
-            if(ui) ui.remove();
-            
-            if (currentConnection && currentConnection.open) {
-                try { currentConnection.send({ type: 'cancel', fileId: fileId }); } catch(e){}
-            }
-        }
-
-        function cancelTransfer(fileId) {
-            console.log(`Cancelling transfer for ${fileId}`);
-            if (activeSend && activeSend.id === fileId) {
-                activeSend.status = 'cancelled';
-                const ui = document.getElementById(`transfer-${fileId}`);
-                if(ui) ui.remove();
-                
-                if (currentConnection && currentConnection.open) {
-                    try { currentConnection.send({ type: 'cancel', fileId: fileId }); } catch(e){}
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Setup Listener for reload
+            window.addEventListener('beforeunload', (e) => {
+                // Instant Reset Logic: If refreshing, strip hash to force Host mode next time
+                if (window.location.hash) {
+                    history.replaceState(null, null, ' ');
                 }
-                
-                isSending = false; 
-                activeSend = null;
-                sendNextFile();
-            } else {
-                // Pending
-                fileQueue = fileQueue.filter(j => j.id !== fileId);
-                const ui = document.getElementById(`transfer-${fileId}`);
-                if(ui) ui.remove();
-            }
-        }
+                if(conn || isTransferring) {
+                    e.preventDefault(); e.returnValue = '';
+                }
+            });
 
-        function createTransferUI(fileId, fileName, isSender) {
-            const container = document.getElementById('transfer-list-container');
-            const div = document.createElement('div');
-            div.className = 'progress-container';
-            div.id = `transfer-${fileId}`;
-            div.innerHTML = `
-                <div class="progress-top-row">
-                    <span class="progress-label">${isSender ? 'Sending' : 'Receiving'}: ${fileName}</span>
-                    <button class="cancel-button">Cancel</button>
-                </div>
-                <div class="progress-bar-bg"><div class="progress-bar"></div></div>
-                <div class="progress-stats"><span>0%</span><span>Wait...</span></div>
-            `;
+            initApp();
+        });
+
+        function initApp() {
+            const hash = window.location.hash.substring(1);
+            isHost = !hash;
             
-            // Add listener immediately
-            div.querySelector('.cancel-button').addEventListener('click', () => {
-                if(isSender) cancelTransfer(fileId);
-                else cancelReceive(fileId);
+            peer = new Peer({ config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } });
+
+            peer.on('open', (id) => {
+                myId = id;
+                console.log('My ID:', id);
+                
+                if (isHost) {
+                    // HOST MODE
+                    new QRCode(document.getElementById('qrcode'), {
+                        text: window.location.href + '#' + id,
+                        width: 180, height: 180
+                    });
+                } else {
+                    // CLIENT MODE - Auto Connect
+                    document.getElementById('connect-panel').style.display = 'none';
+                    document.getElementById('sidebar').style.display = 'none'; // On mobile show chat
+                    document.getElementById('chat-area').style.display = 'flex';
+                    connectToPeer(hash);
+                }
+            });
+
+            peer.on('connection', (connection) => {
+                setupConnection(connection);
+            });
+
+            peer.on('call', (call) => {
+                // Incoming Call
+                document.getElementById('incoming-call-ui').style.display = 'flex';
+                document.getElementById('incoming-call-type').innerText = 
+                    call.metadata && call.metadata.type === 'video' ? 'Incoming Video Call...' : 'Incoming Voice Call...';
+                
+                // Store temp reference to answer later
+                window.pendingCall = call;
             });
             
-            container.appendChild(div);
+            peer.on('error', (err) => {
+                console.log(err);
+                // Instant Reset on Error
+                if(!isHost) {
+                    window.location.hash = '';
+                    window.location.reload();
+                }
+            });
         }
 
-        function updateTransferUI(fileId, percent, text) {
-            const div = document.getElementById(`transfer-${fileId}`);
-            if(!div) return;
-            div.querySelector('.progress-bar').style.width = percent + '%';
-            const stats = div.querySelectorAll('.progress-stats span');
-            stats[0].textContent = percent + '%';
-            if(text) stats[1].textContent = text;
+        function connectToPeer(id) {
+            const connection = peer.connect(id);
+            setupConnection(connection);
         }
 
-        // --- IMAGE MODAL FUNCTIONS ---
+        function setupConnection(connection) {
+            conn = connection;
+            
+            conn.on('open', () => {
+                document.getElementById('status-badge').innerText = 'Connected';
+                document.getElementById('status-badge').style.background = 'var(--green)';
+                document.getElementById('connect-panel').style.display = 'none';
+                document.getElementById('chat-area').style.display = 'flex';
+                
+                // For Host on Mobile, hide sidebar to show chat
+                if(window.innerWidth < 768) {
+                    document.getElementById('sidebar').style.display = 'none';
+                }
+            });
 
-        function sendImageDownloadNotification(msgId) {
-            if(currentConnection && currentConnection.open) {
-                currentConnection.send({ type: 'chat-img-download', msgId: msgId });
+            conn.on('data', (data) => handleData(data));
+            
+            conn.on('close', () => {
+                alert('Connection lost');
+                window.location.hash = '';
+                window.location.reload();
+            });
+        }
+
+        // --- DATA HANDLER ---
+        function handleData(data) {
+            switch(data.type) {
+                case 'text':
+                    addMessage(data.content, 'received', data.reply);
+                    conn.send({type: 'ack', id: data.id});
+                    break;
+                case 'image':
+                    addImage(data.content, 'received', data.id);
+                    conn.send({type: 'ack', id: data.id});
+                    break;
+                case 'ack':
+                    markRead(data.id);
+                    break;
+                case 'dl-notify':
+                    markDownloaded(data.id);
+                    break;
+                // File Transfer
+                case 'file-meta':
+                    startReceivingFile(data);
+                    break;
+                case 'file-chunk':
+                    processFileChunk(data);
+                    break;
+                case 'file-cancel':
+                    handleFileCancel(data.fileId);
+                    break;
+                // Call Signaling
+                case 'call-end':
+                    endCallUI();
+                    break;
             }
         }
 
-        function openImageModal(src, filename, sender, msgId) {
-            const modal = document.getElementById('image-modal-overlay');
-            const img = document.getElementById('image-modal-content');
-            const dlBtn = document.getElementById('image-modal-download');
+        // --- SHARE QR ---
+        async function shareQRCode() {
+            const canvas = document.querySelector('#qrcode canvas');
+            const imgUrl = canvas.toDataURL();
+            const blob = await (await fetch(imgUrl)).blob();
+            const file = new File([blob], "qr_connect.png", { type: "image/png" });
             
-            img.src = src;
-            modal.classList.add('active');
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Connect on QR Send',
+                    text: 'Scan this QR to chat and transfer files.',
+                    files: [file],
+                    url: window.location.href + '#' + myId
+                });
+            } else {
+                alert('Sharing not supported on this browser.');
+            }
+        }
+
+        // --- SCANNER ---
+        let html5QrCode;
+        function startScanner() {
+            document.getElementById('scanner-overlay').style.display = 'flex';
+            html5QrCode = new Html5Qrcode("qr-reader");
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                { fps: 30, qrbox: { width: 250, height: 250 } }, // Fast FPS
+                (decodedText) => {
+                    stopScanner();
+                    const peerId = decodedText.split('#')[1];
+                    if(peerId) {
+                        window.location.hash = peerId;
+                        window.location.reload();
+                    }
+                }
+            );
+        }
+        function stopScanner() {
+            if(html5QrCode) { 
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear(); 
+                    document.getElementById('scanner-overlay').style.display = 'none';
+                }); 
+            }
+        }
+
+        // --- CHAT LOGIC ---
+        function sendText() {
+            const input = document.getElementById('msg-input');
+            const text = input.value.trim();
+            if(!text || !conn) return;
             
-            if(sender === 'receiver') {
-                dlBtn.style.display = 'flex';
-                dlBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    const a = document.createElement('a');
-                    a.href = src;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    sendImageDownloadNotification(msgId);
-                };
+            const msgId = Date.now();
+            conn.send({ type: 'text', content: text, id: msgId, reply: replyContext });
+            addMessage(text, 'sent', replyContext, msgId);
+            input.value = '';
+            cancelReply();
+        }
+
+        function addMessage(text, type, reply, id) {
+            const div = document.createElement('div');
+            div.className = `msg ${type}`;
+            div.id = `msg-${id}`;
+            
+            let content = '';
+            if(reply) {
+                content += `<div class="msg-reply-preview">${reply.text.substring(0,50)}...</div>`;
+            }
+            content += `
+                ${text}
+                <div class="msg-time">
+                    ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    ${type === 'sent' ? '<span class="double-tick">✓</span>' : ''}
+                </div>
+                <div class="reply-btn" onclick="setReply('${text.replace(/'/g, "\\'")}')">↩</div>
+            `;
+            div.innerHTML = content;
+            document.getElementById('messages').appendChild(div);
+            scrollToBottom();
+        }
+
+        function markRead(id) {
+            const el = document.querySelector(`#msg-${id} .double-tick`);
+            if(el) el.innerText = '✓✓';
+        }
+
+        // --- IMAGE LOGIC ---
+        document.getElementById('img-input').onchange = function() {
+            const file = this.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const msgId = Date.now();
+                const base64 = e.target.result;
+                conn.send({ type: 'image', content: base64, id: msgId });
+                addImage(base64, 'sent', msgId);
+            };
+            reader.readAsDataURL(file);
+        };
+
+        function addImage(src, type, id) {
+            const div = document.createElement('div');
+            div.className = `msg ${type}`;
+            div.id = `msg-${id}`;
+            div.innerHTML = `
+                <img src="${src}" onclick="openModal(this.src, '${type}', ${id})">
+                <div class="msg-time">
+                    ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    ${type === 'sent' ? '<span class="double-tick">✓</span>' : ''}
+                </div>
+                ${type === 'sent' ? '<div class="download-indicator" style="font-size:10px; display:none;">Downloaded by peer</div>' : ''}
+            `;
+            document.getElementById('messages').appendChild(div);
+            scrollToBottom();
+        }
+
+        function openModal(src, type, id) {
+            document.getElementById('img-modal').style.display = 'flex';
+            document.getElementById('modal-img').src = src;
+            const dlBtn = document.getElementById('modal-dl');
+            
+            if(type === 'received') {
+                dlBtn.style.display = 'block';
+                dlBtn.href = src;
+                dlBtn.onclick = () => {
+                    conn.send({type: 'dl-notify', id: id});
+                }
             } else {
                 dlBtn.style.display = 'none';
             }
         }
-
-        function closeImageModal() {
-            document.getElementById('image-modal-overlay').classList.remove('active');
-            document.getElementById('image-modal-content').src = '';
+        function closeModal() { document.getElementById('img-modal').style.display = 'none'; }
+        function markDownloaded(id) {
+            const el = document.querySelector(`#msg-${id} .download-indicator`);
+            if(el) el.style.display = 'block';
         }
 
-        // --- REPLY LOGIC ---
-        function setReplyContext(msgId, text) {
-            replyingTo = { msgId, text };
-            document.getElementById('reply-context-bar').style.display = 'flex';
-            document.getElementById('reply-text').textContent = 'Replying to: ' + text.substring(0, 30) + '...';
+        function scrollToBottom() {
+            const el = document.getElementById('messages');
+            el.scrollTop = el.scrollHeight;
         }
-        
+
+        // --- REPLY SYSTEM ---
+        function setReply(text) {
+            replyContext = { text: text };
+            document.getElementById('reply-bar').style.display = 'flex';
+            document.getElementById('reply-text-preview').innerText = text.substring(0, 50) + '...';
+            document.getElementById('msg-input').focus();
+        }
         function cancelReply() {
-            replyingTo = null;
-            document.getElementById('reply-context-bar').style.display = 'none';
+            replyContext = null;
+            document.getElementById('reply-bar').style.display = 'none';
         }
 
-        // --- APP INITIALIZATION ---
+        // --- FILE TRANSFER LOGIC (Optimized & Scrollable) ---
+        document.getElementById('file-input').onchange = function() {
+            for(let file of this.files) {
+                const fileId = Date.now() + Math.random().toString(36).substr(2, 9);
+                fileQueue.push({ file, id: fileId });
+                createFileUI(fileId, file.name, 'Sending');
+            }
+            processFileQueue();
+            this.value = '';
+        };
 
-        document.addEventListener('DOMContentLoaded', () => {
-            const qrReaderEl = document.getElementById('qr-reader');
-            const chatMessages = document.getElementById('chat-messages');
+        function createFileUI(id, name, type) {
+            const div = document.createElement('div');
+            div.className = 'transfer-item';
+            div.id = `file-${id}`;
+            div.innerHTML = `
+                <div class="t-info">
+                    <span class="t-name">${name}</span>
+                    <button class="btn-cancel" onclick="cancelTransfer('${id}', '${type}')">✕</button>
+                </div>
+                <div class="t-bar-bg"><div class="t-bar-fill" id="bar-${id}"></div></div>
+                <div class="t-meta">
+                    <span id="prog-${id}">0%</span>
+                    <span id="eta-${id}">Calculating...</span>
+                </div>
+            `;
+            document.getElementById('transfer-list').prepend(div); // Add new to top
+        }
+
+        function processFileQueue() {
+            if(isTransferring || fileQueue.length === 0) return;
+            const item = fileQueue.shift();
+            activeTransfer = item;
+            isTransferring = true;
             
-            // Close Modal Listeners
-            document.getElementById('image-modal-close').onclick = closeImageModal;
-            document.getElementById('image-modal-overlay').onclick = (e) => {
-                if(e.target.id === 'image-modal-overlay') closeImageModal();
-            }
+            conn.send({ type: 'file-meta', fileId: item.id, name: item.file.name, size: item.file.size });
+            
+            const chunkSize = 16384; // 16KB safe chunk
+            const reader = new FileReader();
+            let offset = 0;
+            let startTime = Date.now();
 
-            // --- PEERJS INIT ---
-            function initPeer() {
-                const hashId = window.location.hash.substring(1);
-                isHost = !hashId;
-
-                peer = new Peer({
-                    config: { iceServers: [ { urls: 'stun:stun.l.google.com:19302' } ] }
+            reader.onload = function(e) {
+                if(!activeTransfer) return; // Cancelled
+                
+                conn.send({
+                    type: 'file-chunk',
+                    fileId: item.id,
+                    data: e.target.result
                 });
-
-                peer.on('open', (id) => {
-                    console.log('My ID:', id);
-                    if(isHost) {
-                        // Host Mode
-                        document.getElementById('status').textContent = 'Waiting for peer...';
-                        new QRCode(document.getElementById('qrcode'), {
-                            text: window.location.href + '#' + id,
-                            width: 180, height: 180
-                        });
-                    } else {
-                        // Client Mode
-                        document.getElementById('qr-code-container').style.display = 'none';
-                        document.getElementById('status').textContent = 'Connecting...';
-                        connectToPeer(hashId);
-                    }
-                });
-
-                peer.on('connection', handleConnection);
-                peer.on('call', handleIncomingCall);
                 
-                peer.on('error', (err) => {
-                    console.error('Peer error:', err);
-                    if(!isHost && (err.type === 'peer-unavailable' || err.type === 'network')) {
-                        // Client retry failed - Reload as Host
-                        alert("Connection failed. Resetting.");
-                        window.location.hash = '';
-                        window.location.reload();
-                    }
-                });
-            }
+                offset += e.target.result.byteLength;
+                updateProgress(item.id, offset, item.file.size, startTime);
 
-            function connectToPeer(id) {
-                const conn = peer.connect(id, { reliable: true });
-                conn.on('open', () => handleConnection(conn));
-                conn.on('error', () => {
-                    alert("Connection failed. Resetting.");
-                    window.location.hash = '';
-                    window.location.reload();
-                });
-            }
-
-            function handleConnection(conn) {
-                if(currentConnection) { conn.close(); return; } // Only 1 connection
-                currentConnection = conn;
-                
-                // UI Update
-                document.getElementById('connection-overlay').classList.add('active');
-                setTimeout(() => document.getElementById('connection-overlay').classList.remove('active'), 1500);
-                
-                document.getElementById('status').textContent = 'Connected';
-                document.getElementById('qr-code-container').style.display = 'none';
-                document.getElementById('connected-view').style.display = 'block';
-                document.getElementById('chat-placeholder').style.display = 'none';
-                document.getElementById('chat-container').style.display = 'flex';
-                document.getElementById('file-input').disabled = false;
-
-                conn.on('data', handleData);
-                conn.on('close', () => {
-                    // STRICT RESET LOGIC
-                    alert("Connection Lost. Resetting application.");
-                    window.location.hash = '';
-                    window.location.reload();
-                });
-            }
-
-            // --- DATA HANDLING ---
-            function handleData(data) {
-                if(data.type === 'chat-text') {
-                    appendMessage(data.text, 'receiver', data.msgId, data.replyContext);
-                    currentConnection.send({type: 'chat-read', msgId: data.msgId});
-                }
-                else if(data.type === 'chat-image') {
-                    appendImage(data.data, 'receiver', data.name, data.msgId);
-                    currentConnection.send({type: 'chat-read', msgId: data.msgId});
-                }
-                else if(data.type === 'chat-read') {
-                    const el = document.getElementById(`status-${data.msgId}`);
-                    if(el) { el.textContent = '✓✓'; el.classList.add('seen'); }
-                }
-                else if(data.type === 'chat-img-download') {
-                    const el = document.getElementById(`dl-${data.msgId}`);
-                    if(el) el.style.display = 'block';
-                }
-                // File Transfer
-                else if(data.type === 'file-meta') {
-                    receivingFiles.set(data.id, { 
-                        name: data.name, size: data.size, type: data.fileType, 
-                        received: 0, chunks: [] 
-                    });
-                    createTransferUI(data.id, data.name, false);
-                }
-                else if(data.type === 'file-chunk') {
-                    const f = receivingFiles.get(data.id);
-                    if(f) {
-                        f.chunks.push(data.chunk);
-                        f.received += data.chunk.byteLength;
-                        updateTransferUI(data.id, Math.round((f.received/f.size)*100));
-                        
-                        if(f.received >= f.size) {
-                            const blob = new Blob(f.chunks, {type: f.type});
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url; a.download = f.name; a.click();
-                            receivingFiles.delete(data.id);
-                            setTimeout(() => document.getElementById(`transfer-${data.id}`).remove(), 2000);
-                        }
-                    }
-                }
-                else if(data.type === 'cancel') {
-                    // Peer cancelled transfer
-                    if(activeSend && activeSend.id === data.fileId) {
-                         activeSend.status = 'cancelled'; // Stop sending
-                    }
-                    receivingFiles.delete(data.fileId); // Stop receiving
-                    const ui = document.getElementById(`transfer-${data.fileId}`);
-                    if(ui) ui.innerHTML = '<span style="color:red">Cancelled by peer</span>';
-                    setTimeout(() => ui?.remove(), 2000);
-                }
-                // Call Signals
-                else if(data.type === 'call-end') {
-                    endCallUI();
-                }
-            }
-
-            // --- CHAT UI ---
-            function appendMessage(text, role, msgId, replyCtx) {
-                const div = document.createElement('div');
-                div.className = `chat-message ${role}`;
-                
-                // Reply Context
-                if(replyCtx) {
-                    div.innerHTML += `<div class="message-reply-context">${replyCtx.text}</div>`;
-                }
-                
-                div.innerHTML += `<div>${text}</div>`;
-                
-                if(role === 'sender') {
-                    div.innerHTML += `<span class="msg-status" id="status-${msgId}">✓</span>`;
-                    // Reply Button for Sender
-                    const repBtn = document.createElement('div');
-                    repBtn.className = 'chat-message-reply-btn';
-                    repBtn.innerHTML = '↩';
-                    repBtn.onclick = () => setReplyContext(msgId, text);
-                    div.appendChild(repBtn);
+                if(offset < item.file.size) {
+                    readNext();
                 } else {
-                    // Reply Button for Receiver
-                     const repBtn = document.createElement('div');
-                    repBtn.className = 'chat-message-reply-btn';
-                    repBtn.innerHTML = '↩';
-                    repBtn.onclick = () => setReplyContext(msgId, text);
-                    div.appendChild(repBtn);
+                    isTransferring = false;
+                    setTimeout(processFileQueue, 100);
                 }
-                
-                chatMessages.appendChild(div);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
-
-            function appendImage(base64, role, name, msgId) {
-                const div = document.createElement('div');
-                div.className = `chat-message ${role}`;
-                const img = document.createElement('img');
-                img.src = base64;
-                img.onclick = () => openImageModal(base64, name, role, msgId);
-                
-                div.appendChild(img);
-                
-                if(role === 'sender') {
-                    div.innerHTML += `<span class="download-status" id="dl-${msgId}">Downloaded by peer</span>`;
-                    div.innerHTML += `<span class="msg-status" id="status-${msgId}">✓</span>`;
-                }
-                
-                chatMessages.appendChild(div);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
-
-            document.getElementById('chat-send-button').onclick = () => {
-                const input = document.getElementById('chat-input');
-                const text = input.value.trim();
-                if(!text || !currentConnection) return;
-                
-                const msgId = crypto.randomUUID();
-                currentConnection.send({ 
-                    type: 'chat-text', text, msgId, 
-                    replyContext: replyingTo 
-                });
-                appendMessage(text, 'sender', msgId, replyingTo);
-                input.value = '';
-                cancelReply();
             };
 
-            document.getElementById('chat-image-input').onchange = (e) => {
-                const file = e.target.files[0];
-                if(!file) return;
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const msgId = crypto.randomUUID();
-                    currentConnection.send({
-                        type: 'chat-image', data: reader.result, name: file.name, msgId
-                    });
-                    appendImage(reader.result, 'sender', file.name, msgId);
-                };
-                reader.readAsDataURL(file);
-                e.target.value = '';
+            const readNext = () => {
+                const slice = item.file.slice(offset, offset + chunkSize);
+                reader.readAsArrayBuffer(slice);
             };
+            readNext();
+        }
 
-            // --- FILE SENDING ---
-            document.getElementById('file-input').onchange = (e) => {
-                for(const file of e.target.files) {
-                    const id = crypto.randomUUID();
-                    fileQueue.push({ file, id });
-                    createTransferUI(id, file.name, true);
-                }
-                e.target.value = '';
-                processQueue();
+        // Receiver State
+        let receiving = {}; 
+
+        function startReceivingFile(meta) {
+            receiving[meta.fileId] = {
+                name: meta.name,
+                size: meta.size,
+                received: 0,
+                buffer: [],
+                startTime: Date.now()
             };
+            createFileUI(meta.fileId, meta.name, 'Receiving');
+        }
 
-            function processQueue() {
-                if(isSending || fileQueue.length === 0) return;
-                const job = fileQueue.shift();
-                activeSend = job;
-                isSending = true;
-                sendFile(job);
-            }
+        function processFileChunk(data) {
+            const fileObj = receiving[data.fileId];
+            if(!fileObj) return; // Cancelled or done
 
-            function sendFile(job) {
-                currentConnection.send({ 
-                    type: 'file-meta', id: job.id, name: job.file.name, 
-                    size: job.file.size, fileType: job.file.type 
-                });
-                
-                const reader = new FileReader();
-                let offset = 0;
-                const chunk = 16384; // 16KB
-                
-                reader.onload = (e) => {
-                    if(job.status === 'cancelled') {
-                        isSending = false; processQueue(); return;
-                    }
-                    
-                    currentConnection.send({
-                        type: 'file-chunk', id: job.id, chunk: e.target.result
-                    });
-                    offset += e.target.result.byteLength;
-                    updateTransferUI(job.id, Math.round((offset/job.file.size)*100));
-                    
-                    if(offset < job.file.size) {
-                        readNext();
-                    } else {
-                        // Done
-                        setTimeout(() => document.getElementById(`transfer-${job.id}`).remove(), 1000);
-                        isSending = false;
-                        processQueue();
-                    }
-                };
-                
-                const readNext = () => {
-                    const slice = job.file.slice(offset, offset + chunk);
-                    reader.readAsArrayBuffer(slice);
-                };
-                readNext();
-            }
+            fileObj.buffer.push(data.data);
+            fileObj.received += data.data.byteLength;
             
-            // Make sendNextFile alias for processQueue for consistency with previous logic
-            const sendNextFile = processQueue;
+            updateProgress(data.fileId, fileObj.received, fileObj.size, fileObj.startTime);
 
-            // --- CALL LOGIC ---
-            window.startCall = (isVideo) => {
-                if(!currentConnection) return;
-                navigator.mediaDevices.getUserMedia({video: isVideo, audio: true})
-                .then(stream => {
-                    localStream = stream;
-                    document.getElementById('local-video').srcObject = stream;
-                    document.getElementById('call-overlay').classList.add('active');
-                    const call = peer.call(currentConnection.peer, stream);
-                    setupCall(call);
-                })
-                .catch(e => alert("Camera/Mic Access Denied"));
-            };
+            if(fileObj.received >= fileObj.size) {
+                const blob = new Blob(fileObj.buffer);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = fileObj.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                
+                delete receiving[data.fileId];
+                document.getElementById(`eta-${data.fileId}`).innerText = 'Completed';
+            }
+        }
 
-            function handleIncomingCall(call) {
-                const accept = confirm("Incoming Call. Accept?");
-                if(accept) {
-                    navigator.mediaDevices.getUserMedia({video: true, audio: true})
-                    .then(stream => {
-                        localStream = stream;
-                        document.getElementById('local-video').srcObject = stream;
-                        document.getElementById('call-overlay').classList.add('active');
-                        call.answer(stream);
-                        setupCall(call);
-                    });
+        function updateProgress(id, current, total, startTime) {
+            const percent = Math.round((current / total) * 100);
+            const bar = document.getElementById(`bar-${id}`);
+            const text = document.getElementById(`prog-${id}`);
+            const etaEl = document.getElementById(`eta-${id}`);
+
+            if(bar) bar.style.width = percent + '%';
+            if(text) text.innerText = percent + '%';
+            
+            // ETA Calc
+            const elapsed = (Date.now() - startTime) / 1000; // seconds
+            const speed = current / elapsed; // bytes per sec
+            const remaining = total - current;
+            const secondsLeft = remaining / speed;
+            
+            if(etaEl && isFinite(secondsLeft)) {
+                etaEl.innerText = secondsLeft < 1 ? 'Almost done' : Math.ceil(secondsLeft) + 's left';
+            }
+        }
+
+        function cancelTransfer(id, type) {
+            // UI Update
+            const el = document.getElementById(`file-${id}`);
+            if(el) el.remove();
+            
+            conn.send({type: 'file-cancel', fileId: id});
+
+            if(type === 'Sending') {
+                if(activeTransfer && activeTransfer.id === id) {
+                    activeTransfer = null;
+                    isTransferring = false;
+                    processFileQueue();
                 } else {
-                    // call.close(); // Optional rejection logic
+                    fileQueue = fileQueue.filter(i => i.id !== id);
                 }
+            } else {
+                delete receiving[id];
             }
+        }
 
-            function setupCall(call) {
-                currentCall = call;
-                call.on('stream', stream => {
-                    remoteStream = stream;
-                    document.getElementById('remote-video').srcObject = stream;
-                });
-                call.on('close', endCallUI);
-            }
+        function handleFileCancel(id) {
+             const el = document.getElementById(`file-${id}`);
+             if(el) el.innerHTML = '<span style="color:red">Cancelled by peer</span>';
+             if(activeTransfer && activeTransfer.id === id) {
+                 activeTransfer = null; isTransferring = false; processFileQueue();
+             }
+             delete receiving[id];
+        }
 
-            window.endCall = () => {
-                if(currentCall) currentCall.close();
-                if(currentConnection) currentConnection.send({type: 'call-end'});
-                endCallUI();
-            };
 
-            function endCallUI() {
-                document.getElementById('call-overlay').classList.remove('active');
-                if(localStream) localStream.getTracks().forEach(t => t.stop());
-                if(remoteStream) remoteStream = null;
-                currentCall = null;
-            }
+        // --- CALL LOGIC (WhatsApp Style) ---
+        function initCall(isVideo) {
+            if(!conn) return;
+            navigator.mediaDevices.getUserMedia({video: isVideo, audio: true})
+            .then(stream => {
+                startLocalStream(stream, isVideo);
+                const call = peer.call(conn.peer, stream, { metadata: { type: isVideo ? 'video' : 'audio' } });
+                handleCallEvents(call);
+            })
+            .catch(e => alert('Camera/Mic permission needed'));
+        }
 
-            // --- QR SCANNER ---
-            let qrScanner = null;
-            window.openScanner = () => {
-                document.getElementById('scanner-modal').classList.add('active');
-                qrScanner = new Html5Qrcode("qr-reader");
-                qrScanner.start({ facingMode: "environment" }, { fps: 10 }, 
-                    (decodedText) => {
-                        // Success
-                        window.closeScanner();
-                        window.location.hash = decodedText.split('#')[1];
-                        window.location.reload();
-                    }
-                );
-            };
-            window.closeScanner = () => {
-                document.getElementById('scanner-modal').classList.remove('active');
-                if(qrScanner) qrScanner.stop().then(() => qrScanner.clear());
-            };
+        function answerCall() {
+            document.getElementById('incoming-call-ui').style.display = 'none';
+            const call = window.pendingCall;
+            const isVideo = call.metadata.type === 'video';
             
-            // --- RELOAD PROTECTION ---
-            window.onbeforeunload = (e) => {
-                if(currentConnection || isSending) {
-                    e.preventDefault();
-                    // Force client to reset to host on reload
-                    if(!isHost) {
-                        history.replaceState(null, null, ' ');
-                    }
-                    return "Active connection will be lost.";
-                }
-            };
+            navigator.mediaDevices.getUserMedia({video: isVideo, audio: true})
+            .then(stream => {
+                startLocalStream(stream, isVideo);
+                call.answer(stream);
+                handleCallEvents(call);
+            });
+        }
 
-            initPeer();
-        });
+        function rejectCall() {
+            document.getElementById('incoming-call-ui').style.display = 'none';
+            // Simple rejection by closing connection
+            if(window.pendingCall) window.pendingCall.close();
+            conn.send({type: 'call-end'});
+        }
+
+        function startLocalStream(stream, isVideo) {
+            localStream = stream;
+            document.getElementById('active-call-ui').style.display = 'flex';
+            document.getElementById('local-video').srcObject = stream;
+            // If audio only, maybe show avatar? For now simplified
+        }
+
+        function handleCallEvents(call) {
+            activeCall = call;
+            call.on('stream', (remoteStream) => {
+                document.getElementById('remote-video').srcObject = remoteStream;
+            });
+            call.on('close', () => endCallUI());
+            call.on('error', () => endCallUI());
+        }
+
+        function endCall() {
+            if(activeCall) activeCall.close();
+            endCallUI();
+            conn.send({type: 'call-end'});
+        }
+
+        function endCallUI() {
+            document.getElementById('active-call-ui').style.display = 'none';
+            document.getElementById('incoming-call-ui').style.display = 'none';
+            if(localStream) localStream.getTracks().forEach(t => t.stop());
+            activeCall = null;
+        }
+
+        // In-Call Controls
+        function toggleMic() {
+            const track = localStream.getAudioTracks()[0];
+            track.enabled = !track.enabled;
+            document.getElementById('btn-mute').classList.toggle('off');
+        }
+        function toggleCam() {
+            const track = localStream.getVideoTracks()[0];
+            if(track) {
+                track.enabled = !track.enabled;
+                document.getElementById('btn-cam').classList.toggle('off');
+            }
+        }
+
     </script>
 </body>
 </html>
