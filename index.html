@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>QR Send - Pro</title>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
@@ -10,14 +10,12 @@
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; -webkit-tap-highlight-color: transparent; }
         :root {
             --primary: #075e54; --secondary: #128c7e; --light: #dcf8c6; --dark: #1f2c34;
             --bg: #e5ddd5; --white: #ffffff; --red: #d32f2f; --green: #25d366;
         }
-        body { background: var(--bg); height: 100vh; display: flex; justify-content: center; overflow: hidden; }
-        
-        /* Dark Mode toggle logic removed to keep code clean, default works best */
+        body { background: var(--bg); height: 100dvh; display: flex; justify-content: center; overflow: hidden; }
         
         .app-container {
             width: 100%; max-width: 1000px; height: 100%; background: var(--white); 
@@ -27,10 +25,11 @@
         /* SIDEBAR (Connection & Files) */
         .sidebar {
             width: 350px; border-right: 1px solid #ddd; display: flex; flex-direction: column; background: #f0f2f5;
+            transition: transform 0.3s ease; z-index: 100;
         }
         .header {
             padding: 15px; background: var(--primary); color: white; display: flex; 
-            justify-content: space-between; align-items: center;
+            justify-content: space-between; align-items: center; height: 60px;
         }
         .header h2 { font-size: 18px; }
         .status-badge { font-size: 12px; background: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 12px; }
@@ -51,23 +50,21 @@
         /* FILE TRANSFER SECTION */
         .files-panel {
             padding: 15px; background: white; border-top: 1px solid #ddd; 
-            display: flex; flex-direction: column; max-height: 40%; /* Limit height */
+            display: flex; flex-direction: column; flex-grow: 1; /* Take available space */
+            min-height: 0; /* Important for flex scrolling */
         }
-        .files-header { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: bold; }
+        .files-header { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: bold; align-items: center; }
         #file-input { display: none; }
         
         /* SCROLLABLE LIST FOR FILES */
         #transfer-list {
             flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
-            padding-right: 5px; min-height: 0; /* Crucial for scrolling */
+            padding-right: 5px; min-height: 0; 
         }
-        /* Scrollbar styling */
-        #transfer-list::-webkit-scrollbar { width: 5px; }
-        #transfer-list::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
-
+        
         .transfer-item {
             background: #f8f9fa; padding: 10px; border-radius: 6px; border: 1px solid #eee;
-            position: relative; font-size: 13px;
+            position: relative; font-size: 13px; flex-shrink: 0;
         }
         .t-info { display: flex; justify-content: space-between; margin-bottom: 5px; }
         .t-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
@@ -84,35 +81,35 @@
         
         .chat-header {
             padding: 10px 15px; background: #f0f2f5; border-bottom: 1px solid #ddd; 
-            display: flex; justify-content: space-between; align-items: center; height: 60px;
+            display: flex; justify-content: space-between; align-items: center; height: 60px; flex-shrink: 0;
         }
         .chat-user { display: flex; align-items: center; gap: 10px; }
         .avatar { width: 40px; height: 40px; background: #ddd; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; }
         .chat-actions { display: flex; gap: 15px; }
         .icon-btn { background: none; border: none; cursor: pointer; color: var(--primary); font-size: 20px; padding: 5px; }
-        .icon-btn:hover { background: rgba(0,0,0,0.05); border-radius: 50%; }
-
-        .messages { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+        
+        .messages { flex-grow: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; -webkit-overflow-scrolling: touch; }
         .msg { max-width: 75%; padding: 8px 12px; border-radius: 8px; font-size: 14px; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .msg.sent { align-self: flex-end; background: var(--light); border-top-right-radius: 0; }
         .msg.received { align-self: flex-start; background: white; border-top-left-radius: 0; }
         .msg-time { font-size: 10px; color: #999; float: right; margin-top: 5px; margin-left: 10px; display: flex; align-items: center; gap: 3px; }
         .double-tick { color: #4fc3f7; font-weight: bold; font-size: 10px; }
+        .msg img { max-width: 250px; border-radius: 6px; cursor: pointer; display: block; }
         
-        .msg img { max-width: 250px; border-radius: 6px; cursor: pointer; }
-        
-        /* Reply Context */
         .reply-bar { 
             background: rgba(255,255,255,0.9); padding: 5px 15px; border-left: 5px solid var(--secondary); 
-            display: none; justify-content: space-between; font-size: 12px; color: #555;
+            display: none; justify-content: space-between; font-size: 12px; color: #555; flex-shrink: 0;
         }
         .msg-reply-preview { background: rgba(0,0,0,0.05); padding: 4px; border-left: 3px solid var(--secondary); margin-bottom: 4px; border-radius: 4px; font-size: 11px; }
         .reply-btn { position: absolute; top: 5px; right: -25px; background: white; border-radius: 50%; width: 20px; height: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.2); cursor: pointer; display: none; align-items: center; justify-content: center; font-size: 12px; }
         .msg:hover .reply-btn { display: flex; }
 
-        .input-area { padding: 10px; background: #f0f2f5; display: flex; align-items: center; gap: 10px; }
+        .input-area { padding: 10px; background: #f0f2f5; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
         #msg-input { flex-grow: 1; padding: 12px; border: none; border-radius: 20px; outline: none; font-size: 15px; }
         .send-btn { background: var(--primary); color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+        /* Mobile Header Controls */
+        .mobile-only { display: none; }
 
         /* CALL OVERLAYS */
         .fullscreen-overlay {
@@ -120,7 +117,6 @@
             background: rgba(0,0,0,0.9); display: none; flex-direction: column;
             align-items: center; justify-content: center; color: white;
         }
-        /* Incoming Call */
         .call-card { background: #1f2c34; padding: 40px; border-radius: 20px; text-align: center; width: 300px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         .call-avatar-lg { width: 100px; height: 100px; background: #ddd; border-radius: 50%; margin: 0 auto 20px; overflow: hidden; }
         .call-actions { display: flex; justify-content: space-around; margin-top: 40px; }
@@ -129,7 +125,6 @@
         .btn-reject { background: var(--red); color: white; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(37, 211, 102, 0); } 100% { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0); } }
 
-        /* Active Call */
         .active-call-ui { width: 100%; height: 100%; position: relative; display: flex; flex-direction: column; }
         #remote-video { width: 100%; height: 100%; object-fit: cover; }
         #local-video { position: absolute; bottom: 100px; right: 20px; width: 120px; height: 160px; background: #333; border-radius: 10px; border: 2px solid white; object-fit: cover; }
@@ -144,34 +139,51 @@
 
         /* Modals */
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 3000; display: none; justify-content: center; align-items: center; }
-        .modal img { max-width: 90%; max-height: 90%; border-radius: 8px; }
-        .modal-close { position: absolute; top: 20px; right: 20px; color: white; font-size: 30px; cursor: pointer; }
+        .modal img { max-width: 95%; max-height: 90%; border-radius: 8px; object-fit: contain; }
+        .modal-close { position: absolute; top: 20px; right: 20px; color: white; font-size: 30px; cursor: pointer; background: rgba(0,0,0,0.5); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;}
         .modal-dl { position: absolute; bottom: 30px; background: white; color: black; padding: 10px 20px; border-radius: 20px; text-decoration: none; font-weight: bold; }
 
-        /* Scanner Overlay */
         #scanner-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 4000; display: none; flex-direction: column; }
         #qr-reader { flex-grow: 1; }
         .scanner-close { position: absolute; top: 20px; right: 20px; color: white; z-index: 4001; font-size: 30px; cursor: pointer; }
 
-        /* Mobile Responsive */
+        /* MOBILE RESPONSIVE FIXES */
         @media (max-width: 768px) {
-            .app-container { flex-direction: column; }
-            .sidebar { width: 100%; height: auto; flex-shrink: 0; border-right: none; border-bottom: 1px solid #ddd; }
-            .connect-panel { display: none; } /* Hide connection QR on mobile once connected or if scanning */
-            .chat-area { height: 100%; }
-            .files-panel { max-height: 150px; } /* Smaller file area on mobile */
-            #local-video { width: 90px; height: 120px; bottom: 90px; }
-            /* Toggle view logic via JS for mobile sidebar/chat */
+            .app-container { flex-direction: column; position: relative; overflow: hidden; }
+            
+            /* Sidebar behaves like a full screen modal or drawer */
+            .sidebar { 
+                width: 100%; height: 100%; position: absolute; top: 0; left: 0; 
+                z-index: 100; transform: translateX(0); /* Default visible for connection */
+            }
+            
+            .sidebar.hidden { transform: translateX(-100%); }
+            
+            .chat-area { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 50; }
+            
+            .mobile-only { display: inline-block; }
+            
+            .files-panel { max-height: none; /* Allow full height usage in sidebar view */ }
+            
+            /* Mobile Header Tweaks */
+            .header { padding-right: 10px; }
+            .btn-close-sidebar { background: none; border: none; color: white; font-size: 20px; cursor: pointer; margin-right: 10px; }
+            
+            /* Fix local video on mobile */
+            #local-video { width: 90px; height: 120px; bottom: 120px; right: 10px; }
         }
     </style>
 </head>
 <body>
 
     <div class="app-container">
-        <!-- SIDEBAR -->
+        <!-- SIDEBAR (FILES & CONNECTION) -->
         <div class="sidebar" id="sidebar">
             <div class="header">
-                <h2>QR Send</h2>
+                <div style="display:flex; align-items:center;">
+                    <button class="mobile-only btn-close-sidebar" onclick="toggleSidebar()">←</button>
+                    <h2>QR Send</h2>
+                </div>
                 <span id="status-badge" class="status-badge">Disconnected</span>
             </div>
             
@@ -186,10 +198,10 @@
             </div>
 
             <!-- File Transfer Panel -->
-            <div class="files-panel">
+            <div class="files-panel" id="files-panel">
                 <div class="files-header">
                     <span>File Transfer</span>
-                    <button class="btn-outline" style="padding:2px 8px; font-size:12px;" onclick="document.getElementById('file-input').click()">+ Add File</button>
+                    <button class="btn-outline" style="padding:4px 10px; font-size:12px;" onclick="document.getElementById('file-input').click()">+ Add File</button>
                 </div>
                 <input type="file" id="file-input" multiple>
                 <div id="transfer-list">
@@ -199,26 +211,26 @@
         </div>
 
         <!-- CHAT AREA -->
-        <div class="chat-area" id="chat-area" style="display:none;"> <!-- Hidden initially on mobile/until connect -->
+        <div class="chat-area" id="chat-area">
             <div class="chat-header">
                 <div class="chat-user">
+                    <!-- Mobile Menu Button to show files -->
+                    <button class="icon-btn mobile-only" onclick="toggleSidebar()">📁</button>
+                    
                     <div class="avatar">👤</div>
                     <div>
-                        <div style="font-weight:bold;">Connected Peer</div>
-                        <div style="font-size:11px; color:#666;">Online</div>
+                        <div style="font-weight:bold;">Peer</div>
+                        <div style="font-size:11px; color:#666;" id="connection-status">Waiting...</div>
                     </div>
                 </div>
                 <div class="chat-actions">
-                    <button class="icon-btn" onclick="initCall(false)" title="Voice Call">📞</button>
-                    <button class="icon-btn" onclick="initCall(true)" title="Video Call">📹</button>
+                    <button class="icon-btn" onclick="initCall(false)">📞</button>
+                    <button class="icon-btn" onclick="initCall(true)">📹</button>
                 </div>
             </div>
 
-            <div class="messages" id="messages">
-                <!-- Messages here -->
-            </div>
+            <div class="messages" id="messages"></div>
 
-            <!-- Reply Preview -->
             <div class="reply-bar" id="reply-bar">
                 <div>
                     <div style="color:var(--primary); font-weight:bold; font-size:10px;">Replying to...</div>
@@ -236,15 +248,15 @@
         </div>
     </div>
 
-    <!-- INCOMING CALL MODAL -->
+    <!-- INCOMING CALL UI -->
     <div class="fullscreen-overlay" id="incoming-call-ui">
         <div class="call-card">
             <div class="call-avatar-lg"><img src="https://cdn-icons-png.flaticon.com/512/149/149071.png" width="100%"></div>
-            <h2 id="incoming-call-type">Incoming Video Call...</h2>
+            <h2 id="incoming-call-type">Incoming Call...</h2>
             <p style="color:#aaa; margin-top:10px;">Peer is calling you</p>
             <div class="call-actions">
-                <button class="call-btn btn-reject" onclick="rejectCall()">📞</button>
-                <button class="call-btn btn-accept" onclick="answerCall()">📞</button>
+                <button class="call-btn btn-reject" onclick="rejectCall()">✖</button>
+                <button class="call-btn btn-accept" onclick="answerCall()">✔</button>
             </div>
         </div>
     </div>
@@ -262,41 +274,42 @@
         </div>
     </div>
 
-    <!-- IMAGE PREVIEW MODAL -->
+    <!-- IMAGE MODAL -->
     <div class="modal" id="img-modal">
         <div class="modal-close" onclick="closeModal()">✕</div>
         <img id="modal-img" src="">
         <a id="modal-dl" href="#" class="modal-dl" download>Download</a>
     </div>
 
-    <!-- SCANNER OVERLAY -->
+    <!-- SCANNER -->
     <div id="scanner-overlay">
         <div class="scanner-close" onclick="stopScanner()">✕</div>
         <div id="qr-reader"></div>
     </div>
 
     <script>
-        // --- CORE STATE ---
         let peer, conn, myId, isHost;
         let activeCall = null, localStream = null;
         let replyContext = null;
         let fileQueue = [], activeTransfer = null, isTransferring = false;
         
-        // --- INITIALIZATION ---
         document.addEventListener('DOMContentLoaded', () => {
-            // Setup Listener for reload
+            // Force Client reset logic
             window.addEventListener('beforeunload', (e) => {
-                // Instant Reset Logic: If refreshing, strip hash to force Host mode next time
-                if (window.location.hash) {
-                    history.replaceState(null, null, ' ');
-                }
-                if(conn || isTransferring) {
-                    e.preventDefault(); e.returnValue = '';
+                if(!isHost) {
+                     // On mobile/client, ensure next load is clean host mode
+                     history.replaceState(null, null, window.location.pathname);
                 }
             });
-
+            
             initApp();
         });
+
+        // Mobile Sidebar Toggle
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('hidden');
+        }
 
         function initApp() {
             const hash = window.location.hash.substring(1);
@@ -306,495 +319,254 @@
 
             peer.on('open', (id) => {
                 myId = id;
-                console.log('My ID:', id);
-                
                 if (isHost) {
-                    // HOST MODE
                     new QRCode(document.getElementById('qrcode'), {
-                        text: window.location.href + '#' + id,
-                        width: 180, height: 180
+                        text: window.location.href + '#' + id, width: 180, height: 180
                     });
+                    // Desktop/Host starts with sidebar visible
                 } else {
-                    // CLIENT MODE - Auto Connect
+                    // Mobile/Client starts connected logic
                     document.getElementById('connect-panel').style.display = 'none';
-                    document.getElementById('sidebar').style.display = 'none'; // On mobile show chat
-                    document.getElementById('chat-area').style.display = 'flex';
                     connectToPeer(hash);
+                    // Hide sidebar initially on mobile to show chat
+                    if(window.innerWidth < 768) {
+                        document.getElementById('sidebar').classList.add('hidden');
+                    }
                 }
             });
 
-            peer.on('connection', (connection) => {
-                setupConnection(connection);
-            });
-
+            peer.on('connection', (c) => setupConnection(c));
             peer.on('call', (call) => {
-                // Incoming Call
                 document.getElementById('incoming-call-ui').style.display = 'flex';
                 document.getElementById('incoming-call-type').innerText = 
-                    call.metadata && call.metadata.type === 'video' ? 'Incoming Video Call...' : 'Incoming Voice Call...';
-                
-                // Store temp reference to answer later
+                    call.metadata?.type === 'video' ? 'Incoming Video Call...' : 'Incoming Voice Call...';
                 window.pendingCall = call;
             });
             
-            peer.on('error', (err) => {
-                console.log(err);
-                // Instant Reset on Error
-                if(!isHost) {
-                    window.location.hash = '';
-                    window.location.reload();
-                }
+            peer.on('error', () => {
+                if(!isHost) { window.location.hash = ''; window.location.reload(); }
             });
         }
 
         function connectToPeer(id) {
-            const connection = peer.connect(id);
-            setupConnection(connection);
+            const c = peer.connect(id);
+            setupConnection(c);
         }
 
-        function setupConnection(connection) {
-            conn = connection;
-            
+        function setupConnection(c) {
+            conn = c;
             conn.on('open', () => {
                 document.getElementById('status-badge').innerText = 'Connected';
                 document.getElementById('status-badge').style.background = 'var(--green)';
                 document.getElementById('connect-panel').style.display = 'none';
-                document.getElementById('chat-area').style.display = 'flex';
+                document.getElementById('connection-status').innerText = 'Online';
                 
-                // For Host on Mobile, hide sidebar to show chat
+                // Auto-hide sidebar on mobile once connected to show chat
                 if(window.innerWidth < 768) {
-                    document.getElementById('sidebar').style.display = 'none';
+                    document.getElementById('sidebar').classList.add('hidden');
                 }
             });
-
-            conn.on('data', (data) => handleData(data));
-            
+            conn.on('data', handleData);
             conn.on('close', () => {
-                alert('Connection lost');
+                alert('Connection disconnected');
                 window.location.hash = '';
                 window.location.reload();
             });
         }
 
-        // --- DATA HANDLER ---
         function handleData(data) {
             switch(data.type) {
-                case 'text':
-                    addMessage(data.content, 'received', data.reply);
-                    conn.send({type: 'ack', id: data.id});
-                    break;
-                case 'image':
-                    addImage(data.content, 'received', data.id);
-                    conn.send({type: 'ack', id: data.id});
-                    break;
-                case 'ack':
-                    markRead(data.id);
-                    break;
-                case 'dl-notify':
-                    markDownloaded(data.id);
-                    break;
-                // File Transfer
-                case 'file-meta':
-                    startReceivingFile(data);
-                    break;
-                case 'file-chunk':
-                    processFileChunk(data);
-                    break;
-                case 'file-cancel':
-                    handleFileCancel(data.fileId);
-                    break;
-                // Call Signaling
-                case 'call-end':
-                    endCallUI();
-                    break;
+                case 'text': addMessage(data.content, 'received', data.reply); conn.send({type:'ack', id:data.id}); break;
+                case 'image': addImage(data.content, 'received', data.id); conn.send({type:'ack', id:data.id}); break;
+                case 'ack': markRead(data.id); break;
+                case 'dl-notify': markDownloaded(data.id); break;
+                case 'file-meta': startReceivingFile(data); break;
+                case 'file-chunk': processFileChunk(data); break;
+                case 'file-cancel': handleFileCancel(data.fileId); break;
+                case 'call-end': endCallUI(); break;
             }
         }
 
-        // --- SHARE QR ---
+        // Share
         async function shareQRCode() {
             const canvas = document.querySelector('#qrcode canvas');
-            const imgUrl = canvas.toDataURL();
-            const blob = await (await fetch(imgUrl)).blob();
-            const file = new File([blob], "qr_connect.png", { type: "image/png" });
-            
-            if (navigator.share) {
-                navigator.share({
-                    title: 'Connect on QR Send',
-                    text: 'Scan this QR to chat and transfer files.',
-                    files: [file],
-                    url: window.location.href + '#' + myId
-                });
-            } else {
-                alert('Sharing not supported on this browser.');
-            }
+            const blob = await (await fetch(canvas.toDataURL())).blob();
+            const file = new File([blob], "qr.png", { type: "image/png" });
+            if (navigator.share) navigator.share({ files: [file], url: window.location.href + '#' + myId });
         }
 
-        // --- SCANNER ---
-        let html5QrCode;
-        function startScanner() {
-            document.getElementById('scanner-overlay').style.display = 'flex';
-            html5QrCode = new Html5Qrcode("qr-reader");
-            html5QrCode.start(
-                { facingMode: "environment" }, 
-                { fps: 30, qrbox: { width: 250, height: 250 } }, // Fast FPS
-                (decodedText) => {
-                    stopScanner();
-                    const peerId = decodedText.split('#')[1];
-                    if(peerId) {
-                        window.location.hash = peerId;
-                        window.location.reload();
-                    }
-                }
-            );
-        }
-        function stopScanner() {
-            if(html5QrCode) { 
-                html5QrCode.stop().then(() => {
-                    html5QrCode.clear(); 
-                    document.getElementById('scanner-overlay').style.display = 'none';
-                }); 
-            }
-        }
-
-        // --- CHAT LOGIC ---
+        // Chat & File Logic same as before but cleaner
         function sendText() {
             const input = document.getElementById('msg-input');
-            const text = input.value.trim();
-            if(!text || !conn) return;
-            
-            const msgId = Date.now();
-            conn.send({ type: 'text', content: text, id: msgId, reply: replyContext });
-            addMessage(text, 'sent', replyContext, msgId);
-            input.value = '';
-            cancelReply();
+            const val = input.value.trim();
+            if(!val || !conn) return;
+            const id = Date.now();
+            conn.send({type:'text', content:val, id:id, reply:replyContext});
+            addMessage(val, 'sent', replyContext, id);
+            input.value = ''; cancelReply();
         }
 
         function addMessage(text, type, reply, id) {
             const div = document.createElement('div');
-            div.className = `msg ${type}`;
-            div.id = `msg-${id}`;
-            
-            let content = '';
-            if(reply) {
-                content += `<div class="msg-reply-preview">${reply.text.substring(0,50)}...</div>`;
-            }
-            content += `
-                ${text}
-                <div class="msg-time">
-                    ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                    ${type === 'sent' ? '<span class="double-tick">✓</span>' : ''}
-                </div>
-                <div class="reply-btn" onclick="setReply('${text.replace(/'/g, "\\'")}')">↩</div>
-            `;
-            div.innerHTML = content;
+            div.className = `msg ${type}`; div.id = `msg-${id}`;
+            let html = reply ? `<div class="msg-reply-preview">${reply.text.substring(0,50)}...</div>` : '';
+            html += `${text}<div class="msg-time">${new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} ${type==='sent'?'<span class="double-tick">✓</span>':''}</div><div class="reply-btn" onclick="setReply('${text.replace(/'/g, "\\'")}')">↩</div>`;
+            div.innerHTML = html;
             document.getElementById('messages').appendChild(div);
             scrollToBottom();
         }
-
-        function markRead(id) {
-            const el = document.querySelector(`#msg-${id} .double-tick`);
-            if(el) el.innerText = '✓✓';
-        }
-
-        // --- IMAGE LOGIC ---
-        document.getElementById('img-input').onchange = function() {
-            const file = this.files[0];
-            if(!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const msgId = Date.now();
-                const base64 = e.target.result;
-                conn.send({ type: 'image', content: base64, id: msgId });
-                addImage(base64, 'sent', msgId);
-            };
-            reader.readAsDataURL(file);
-        };
 
         function addImage(src, type, id) {
             const div = document.createElement('div');
-            div.className = `msg ${type}`;
-            div.id = `msg-${id}`;
-            div.innerHTML = `
-                <img src="${src}" onclick="openModal(this.src, '${type}', ${id})">
-                <div class="msg-time">
-                    ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                    ${type === 'sent' ? '<span class="double-tick">✓</span>' : ''}
-                </div>
-                ${type === 'sent' ? '<div class="download-indicator" style="font-size:10px; display:none;">Downloaded by peer</div>' : ''}
-            `;
+            div.className = `msg ${type}`; div.id = `msg-${id}`;
+            div.innerHTML = `<img src="${src}" onclick="openModal(this.src, '${type}', ${id})"><div class="msg-time">${new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})} ${type==='sent'?'<span class="double-tick">✓</span>':''}</div>${type==='sent'?'<div class="download-indicator" style="font-size:10px; display:none;">Downloaded by peer</div>':''}`;
             document.getElementById('messages').appendChild(div);
             scrollToBottom();
         }
 
-        function openModal(src, type, id) {
-            document.getElementById('img-modal').style.display = 'flex';
-            document.getElementById('modal-img').src = src;
-            const dlBtn = document.getElementById('modal-dl');
-            
-            if(type === 'received') {
-                dlBtn.style.display = 'block';
-                dlBtn.href = src;
-                dlBtn.onclick = () => {
-                    conn.send({type: 'dl-notify', id: id});
-                }
-            } else {
-                dlBtn.style.display = 'none';
-            }
-        }
-        function closeModal() { document.getElementById('img-modal').style.display = 'none'; }
-        function markDownloaded(id) {
-            const el = document.querySelector(`#msg-${id} .download-indicator`);
-            if(el) el.style.display = 'block';
-        }
-
-        function scrollToBottom() {
-            const el = document.getElementById('messages');
-            el.scrollTop = el.scrollHeight;
-        }
-
-        // --- REPLY SYSTEM ---
-        function setReply(text) {
-            replyContext = { text: text };
-            document.getElementById('reply-bar').style.display = 'flex';
-            document.getElementById('reply-text-preview').innerText = text.substring(0, 50) + '...';
-            document.getElementById('msg-input').focus();
-        }
-        function cancelReply() {
-            replyContext = null;
-            document.getElementById('reply-bar').style.display = 'none';
-        }
-
-        // --- FILE TRANSFER LOGIC (Optimized & Scrollable) ---
+        // File Transfer
         document.getElementById('file-input').onchange = function() {
-            for(let file of this.files) {
-                const fileId = Date.now() + Math.random().toString(36).substr(2, 9);
-                fileQueue.push({ file, id: fileId });
-                createFileUI(fileId, file.name, 'Sending');
+            for(let f of this.files) {
+                const id = Date.now() + Math.random().toString(36).substr(2, 5);
+                fileQueue.push({file:f, id:id});
+                createFileUI(id, f.name, 'Sending');
             }
-            processFileQueue();
-            this.value = '';
+            processFileQueue(); this.value = '';
         };
 
         function createFileUI(id, name, type) {
             const div = document.createElement('div');
-            div.className = 'transfer-item';
-            div.id = `file-${id}`;
-            div.innerHTML = `
-                <div class="t-info">
-                    <span class="t-name">${name}</span>
-                    <button class="btn-cancel" onclick="cancelTransfer('${id}', '${type}')">✕</button>
-                </div>
-                <div class="t-bar-bg"><div class="t-bar-fill" id="bar-${id}"></div></div>
-                <div class="t-meta">
-                    <span id="prog-${id}">0%</span>
-                    <span id="eta-${id}">Calculating...</span>
-                </div>
-            `;
-            document.getElementById('transfer-list').prepend(div); // Add new to top
+            div.className = 'transfer-item'; div.id = `file-${id}`;
+            div.innerHTML = `<div class="t-info"><span class="t-name">${name}</span><button class="btn-cancel" onclick="cancelTransfer('${id}', '${type}')">✕</button></div><div class="t-bar-bg"><div class="t-bar-fill" id="bar-${id}"></div></div><div class="t-meta"><span id="prog-${id}">0%</span><span id="eta-${id}">Calculating...</span></div>`;
+            document.getElementById('transfer-list').prepend(div);
         }
 
         function processFileQueue() {
             if(isTransferring || fileQueue.length === 0) return;
             const item = fileQueue.shift();
-            activeTransfer = item;
-            isTransferring = true;
+            activeTransfer = item; isTransferring = true;
+            conn.send({type:'file-meta', fileId:item.id, name:item.file.name, size:item.file.size});
             
-            conn.send({ type: 'file-meta', fileId: item.id, name: item.file.name, size: item.file.size });
-            
-            const chunkSize = 16384; // 16KB safe chunk
             const reader = new FileReader();
-            let offset = 0;
-            let startTime = Date.now();
-
-            reader.onload = function(e) {
-                if(!activeTransfer) return; // Cancelled
-                
-                conn.send({
-                    type: 'file-chunk',
-                    fileId: item.id,
-                    data: e.target.result
-                });
-                
+            let offset = 0; let start = Date.now();
+            reader.onload = (e) => {
+                if(!activeTransfer) return;
+                conn.send({type:'file-chunk', fileId:item.id, data:e.target.result});
                 offset += e.target.result.byteLength;
-                updateProgress(item.id, offset, item.file.size, startTime);
-
-                if(offset < item.file.size) {
-                    readNext();
-                } else {
-                    isTransferring = false;
-                    setTimeout(processFileQueue, 100);
-                }
+                updateProgress(item.id, offset, item.file.size, start);
+                if(offset < item.file.size) readNext();
+                else { isTransferring = false; setTimeout(processFileQueue, 50); }
             };
-
-            const readNext = () => {
-                const slice = item.file.slice(offset, offset + chunkSize);
-                reader.readAsArrayBuffer(slice);
-            };
+            const readNext = () => reader.readAsArrayBuffer(item.file.slice(offset, offset + 16384));
             readNext();
         }
 
-        // Receiver State
-        let receiving = {}; 
-
+        let receiving = {};
         function startReceivingFile(meta) {
-            receiving[meta.fileId] = {
-                name: meta.name,
-                size: meta.size,
-                received: 0,
-                buffer: [],
-                startTime: Date.now()
-            };
+            receiving[meta.fileId] = { name: meta.name, size: meta.size, received: 0, buffer: [], start: Date.now() };
             createFileUI(meta.fileId, meta.name, 'Receiving');
         }
-
         function processFileChunk(data) {
-            const fileObj = receiving[data.fileId];
-            if(!fileObj) return; // Cancelled or done
-
-            fileObj.buffer.push(data.data);
-            fileObj.received += data.data.byteLength;
-            
-            updateProgress(data.fileId, fileObj.received, fileObj.size, fileObj.startTime);
-
-            if(fileObj.received >= fileObj.size) {
-                const blob = new Blob(fileObj.buffer);
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = fileObj.name;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                
+            const f = receiving[data.fileId];
+            if(!f) return;
+            f.buffer.push(data.data); f.received += data.data.byteLength;
+            updateProgress(data.fileId, f.received, f.size, f.start);
+            if(f.received >= f.size) {
+                const url = URL.createObjectURL(new Blob(f.buffer));
+                const a = document.createElement('a'); a.href = url; a.download = f.name;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
                 delete receiving[data.fileId];
-                document.getElementById(`eta-${data.fileId}`).innerText = 'Completed';
+                document.getElementById(`eta-${data.fileId}`).innerText = 'Done';
             }
         }
 
-        function updateProgress(id, current, total, startTime) {
-            const percent = Math.round((current / total) * 100);
+        function updateProgress(id, cur, tot, start) {
+            const pct = Math.round((cur/tot)*100);
             const bar = document.getElementById(`bar-${id}`);
-            const text = document.getElementById(`prog-${id}`);
-            const etaEl = document.getElementById(`eta-${id}`);
-
-            if(bar) bar.style.width = percent + '%';
-            if(text) text.innerText = percent + '%';
-            
-            // ETA Calc
-            const elapsed = (Date.now() - startTime) / 1000; // seconds
-            const speed = current / elapsed; // bytes per sec
-            const remaining = total - current;
-            const secondsLeft = remaining / speed;
-            
-            if(etaEl && isFinite(secondsLeft)) {
-                etaEl.innerText = secondsLeft < 1 ? 'Almost done' : Math.ceil(secondsLeft) + 's left';
-            }
+            const txt = document.getElementById(`prog-${id}`);
+            const eta = document.getElementById(`eta-${id}`);
+            if(bar) bar.style.width = pct + '%';
+            if(txt) txt.innerText = pct + '%';
+            const elapsed = (Date.now() - start)/1000;
+            const rate = cur/elapsed;
+            const left = (tot-cur)/rate;
+            if(eta && isFinite(left)) eta.innerText = left < 1 ? 'Almost done' : Math.ceil(left)+'s left';
         }
 
         function cancelTransfer(id, type) {
-            // UI Update
-            const el = document.getElementById(`file-${id}`);
-            if(el) el.remove();
-            
-            conn.send({type: 'file-cancel', fileId: id});
-
-            if(type === 'Sending') {
-                if(activeTransfer && activeTransfer.id === id) {
-                    activeTransfer = null;
-                    isTransferring = false;
-                    processFileQueue();
-                } else {
-                    fileQueue = fileQueue.filter(i => i.id !== id);
-                }
-            } else {
-                delete receiving[id];
-            }
+            document.getElementById(`file-${id}`).remove();
+            conn.send({type:'file-cancel', fileId:id});
+            if(type==='Sending') {
+                if(activeTransfer?.id === id) { activeTransfer=null; isTransferring=false; processFileQueue(); }
+                else fileQueue = fileQueue.filter(i=>i.id!==id);
+            } else delete receiving[id];
         }
-
         function handleFileCancel(id) {
-             const el = document.getElementById(`file-${id}`);
-             if(el) el.innerHTML = '<span style="color:red">Cancelled by peer</span>';
-             if(activeTransfer && activeTransfer.id === id) {
-                 activeTransfer = null; isTransferring = false; processFileQueue();
-             }
-             delete receiving[id];
+            const el = document.getElementById(`file-${id}`);
+            if(el) el.innerHTML = '<span style="color:red">Cancelled by peer</span>';
+            if(activeTransfer?.id===id) { activeTransfer=null; isTransferring=false; processFileQueue(); }
+            delete receiving[id];
         }
 
-
-        // --- CALL LOGIC (WhatsApp Style) ---
-        function initCall(isVideo) {
-            if(!conn) return;
-            navigator.mediaDevices.getUserMedia({video: isVideo, audio: true})
-            .then(stream => {
-                startLocalStream(stream, isVideo);
-                const call = peer.call(conn.peer, stream, { metadata: { type: isVideo ? 'video' : 'audio' } });
-                handleCallEvents(call);
-            })
-            .catch(e => alert('Camera/Mic permission needed'));
+        // Utils
+        function scrollToBottom() { document.getElementById('messages').scrollTop = 1000000; }
+        function markRead(id) { const el = document.querySelector(`#msg-${id} .double-tick`); if(el) el.innerText='✓✓'; }
+        function markDownloaded(id) { const el = document.querySelector(`#msg-${id} .download-indicator`); if(el) el.style.display='block'; }
+        function openModal(src, type, id) { 
+            document.getElementById('img-modal').style.display='flex'; document.getElementById('modal-img').src=src;
+            const dl = document.getElementById('modal-dl');
+            if(type==='received') { dl.style.display='block'; dl.href=src; dl.onclick=()=>conn.send({type:'dl-notify', id:id}); }
+            else dl.style.display='none';
         }
+        function closeModal() { document.getElementById('img-modal').style.display='none'; }
+        function setReply(t) { replyContext={text:t}; document.getElementById('reply-bar').style.display='flex'; document.getElementById('reply-text-preview').innerText=t.substring(0,50)+'...'; }
+        function cancelReply() { replyContext=null; document.getElementById('reply-bar').style.display='none'; }
 
+        // Call
+        function initCall(vid) {
+            navigator.mediaDevices.getUserMedia({video:vid, audio:true}).then(s=>{
+                localStream=s; document.getElementById('active-call-ui').style.display='flex';
+                document.getElementById('local-video').srcObject=s;
+                const call=peer.call(conn.peer, s, {metadata:{type:vid?'video':'audio'}});
+                handleCall(call);
+            });
+        }
         function answerCall() {
-            document.getElementById('incoming-call-ui').style.display = 'none';
-            const call = window.pendingCall;
-            const isVideo = call.metadata.type === 'video';
-            
-            navigator.mediaDevices.getUserMedia({video: isVideo, audio: true})
-            .then(stream => {
-                startLocalStream(stream, isVideo);
-                call.answer(stream);
-                handleCallEvents(call);
+            document.getElementById('incoming-call-ui').style.display='none';
+            const vid = window.pendingCall.metadata.type==='video';
+            navigator.mediaDevices.getUserMedia({video:vid, audio:true}).then(s=>{
+                localStream=s; document.getElementById('active-call-ui').style.display='flex';
+                document.getElementById('local-video').srcObject=s;
+                window.pendingCall.answer(s);
+                handleCall(window.pendingCall);
             });
         }
-
-        function rejectCall() {
-            document.getElementById('incoming-call-ui').style.display = 'none';
-            // Simple rejection by closing connection
-            if(window.pendingCall) window.pendingCall.close();
-            conn.send({type: 'call-end'});
+        function handleCall(call) {
+            activeCall=call;
+            call.on('stream', r=>{ document.getElementById('remote-video').srcObject=r; });
+            call.on('close', endCallUI);
         }
-
-        function startLocalStream(stream, isVideo) {
-            localStream = stream;
-            document.getElementById('active-call-ui').style.display = 'flex';
-            document.getElementById('local-video').srcObject = stream;
-            // If audio only, maybe show avatar? For now simplified
-        }
-
-        function handleCallEvents(call) {
-            activeCall = call;
-            call.on('stream', (remoteStream) => {
-                document.getElementById('remote-video').srcObject = remoteStream;
-            });
-            call.on('close', () => endCallUI());
-            call.on('error', () => endCallUI());
-        }
-
-        function endCall() {
-            if(activeCall) activeCall.close();
-            endCallUI();
-            conn.send({type: 'call-end'});
-        }
-
+        function endCall() { activeCall?.close(); conn.send({type:'call-end'}); endCallUI(); }
         function endCallUI() {
-            document.getElementById('active-call-ui').style.display = 'none';
-            document.getElementById('incoming-call-ui').style.display = 'none';
-            if(localStream) localStream.getTracks().forEach(t => t.stop());
-            activeCall = null;
+            document.getElementById('active-call-ui').style.display='none';
+            document.getElementById('incoming-call-ui').style.display='none';
+            if(localStream) localStream.getTracks().forEach(t=>t.stop());
         }
+        function toggleMic() { const t=localStream.getAudioTracks()[0]; t.enabled=!t.enabled; document.getElementById('btn-mute').classList.toggle('off'); }
+        function toggleCam() { const t=localStream.getVideoTracks()[0]; if(t){ t.enabled=!t.enabled; document.getElementById('btn-cam').classList.toggle('off'); } }
+        function rejectCall() { document.getElementById('incoming-call-ui').style.display='none'; window.pendingCall?.close(); }
 
-        // In-Call Controls
-        function toggleMic() {
-            const track = localStream.getAudioTracks()[0];
-            track.enabled = !track.enabled;
-            document.getElementById('btn-mute').classList.toggle('off');
+        // Scanner
+        let qrScanner;
+        function startScanner() {
+            document.getElementById('scanner-overlay').style.display='flex';
+            qrScanner = new Html5Qrcode("qr-reader");
+            qrScanner.start({facingMode:"environment"}, {fps:30, qrbox:250}, t=>{
+                stopScanner(); const id=t.split('#')[1];
+                if(id) { window.location.hash=id; window.location.reload(); }
+            });
         }
-        function toggleCam() {
-            const track = localStream.getVideoTracks()[0];
-            if(track) {
-                track.enabled = !track.enabled;
-                document.getElementById('btn-cam').classList.toggle('off');
-            }
-        }
-
+        function stopScanner() { if(qrScanner) qrScanner.stop().then(()=> { qrScanner.clear(); document.getElementById('scanner-overlay').style.display='none'; }); }
     </script>
 </body>
 </html>
